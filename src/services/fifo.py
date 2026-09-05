@@ -8,10 +8,11 @@ Sorrend: `order_date`, majd azonos dátumnál `order_number`.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.db.models import (
@@ -51,23 +52,34 @@ def open_order_items(
     return list(db.scalars(stmt))
 
 
-def pending_qty_on_po_item(db: Session, po_item_id: int, exclude_receipt_id: int) -> Decimal:
-    """Más, még nem exportált bevételezésekben lefoglalt mennyiség.
+def recalculate(db: Session, po_item_ids: Iterable[int]) -> None:
+    """A rendeléstételek bevételezett mennyiségének újraszámolása.
 
-    A `received_qty` csak exportkor nő, ezért a még nyitott bevételezések
-    foglalásait külön kell figyelembe venni — különben két párhuzamos
-    bevételezés ugyanarra a maradékra allokálna.
+    A `received_qty` MINDEN beolvasást tartalmaz, a bevételezés
+    állapotától függetlenül — a beolvasott áru fizikailag megérkezett,
+    ezért azonnal levonódik a rendelésből.
+
+    Bármilyen változás után hívni kell: beolvasás, mennyiség módosítás,
+    tétel törlése, bevételezés törlése.
     """
-    stmt = (
-        select(ReceiptItem.qty)
-        .join(Receipt)
-        .where(
-            ReceiptItem.purchase_order_item_id == po_item_id,
-            ReceiptItem.receipt_id != exclude_receipt_id,
-            Receipt.status != ReceiptStatus.exported,
+    order_ids: set[int] = set()
+
+    for po_item_id in {i for i in po_item_ids if i is not None}:
+        po_item = db.get(PurchaseOrderItem, po_item_id)
+        if po_item is None:
+            continue
+        total = db.scalar(
+            select(func.coalesce(func.sum(ReceiptItem.qty), 0)).where(
+                ReceiptItem.purchase_order_item_id == po_item_id
+            )
         )
-    )
-    return sum((Decimal(q) for q in db.scalars(stmt)), Decimal(0))
+        po_item.received_qty = Decimal(total or 0)
+        order_ids.add(po_item.purchase_order_id)
+
+    db.flush()
+    for order_id in order_ids:
+        refresh_order_status(db, order_id)
+    db.flush()
 
 
 def allocate(
@@ -85,11 +97,9 @@ def allocate(
         if remaining_to_place <= 0:
             break
 
-        available = (
-            po_item.remaining_qty
-            - pending_qty_on_po_item(db, po_item.id, receipt.id)
-            - _already_allocated_in_receipt(db, receipt.id, po_item.id)
-        )
+        # A remaining_qty már minden beolvasást tartalmaz (a sajátunkat is),
+        # ezért nincs szükség külön foglalás-számításra.
+        available = po_item.remaining_qty
         if available <= 0:
             continue
 
@@ -101,17 +111,6 @@ def allocate(
         allocations.append(Allocation(po_item=None, qty=remaining_to_place))
 
     return allocations
-
-
-def _already_allocated_in_receipt(
-    db: Session, receipt_id: int, po_item_id: int
-) -> Decimal:
-    """Ebben a bevételezésben erre a rendeléstételre már lefoglalt mennyiség."""
-    stmt = select(ReceiptItem.qty).where(
-        ReceiptItem.receipt_id == receipt_id,
-        ReceiptItem.purchase_order_item_id == po_item_id,
-    )
-    return sum((Decimal(q) for q in db.scalars(stmt)), Decimal(0))
 
 
 def last_known_price(db: Session, product_id: int) -> Decimal | None:
@@ -188,30 +187,17 @@ def apply_scan(
         created_or_updated.append(item)
 
     db.flush()
+    recalculate(db, [i.purchase_order_item_id for i in created_or_updated])
     return created_or_updated
 
 
 def commit_receipt_to_orders(db: Session, receipt: Receipt) -> None:
-    """Exportkor: a bevételezett mennyiségek rákönyvelése a rendelésekre.
+    """Exportkor: biztonsági újraszámolás.
 
-    EZ az egyetlen hely, ahol a `received_qty` nő. Ezután a rendelések
-    státusza újraszámolódik.
+    A mennyiségek már a beolvasáskor rákerültek a rendelésre, itt csak
+    megbizonyosodunk róla, hogy az összegek stimmelnek.
     """
-    touched_orders: set[int] = set()
-
-    for item in receipt.items:
-        if item.purchase_order_item_id is None:
-            continue
-        po_item = db.get(PurchaseOrderItem, item.purchase_order_item_id)
-        if po_item is None:
-            continue
-        po_item.received_qty = Decimal(po_item.received_qty) + Decimal(item.qty)
-        touched_orders.add(po_item.purchase_order_id)
-
-    for order_id in touched_orders:
-        refresh_order_status(db, order_id)
-
-    db.flush()
+    recalculate(db, [i.purchase_order_item_id for i in receipt.items])
 
 
 def refresh_order_status(db: Session, order_id: int) -> None:

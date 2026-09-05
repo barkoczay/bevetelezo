@@ -158,7 +158,6 @@ tr.clickable:hover td { background: var(--steel-100); }
 }
 
 .muted { color: var(--steel-500); }
-.pending { color: var(--warn); font-weight: 500; }
 .wrap { max-width: 420px; }
 
 /* A sorszín az állapotot kódolja, nem díszít. */
@@ -202,14 +201,8 @@ tr.row-warn td { background: var(--warn-soft); }
   overflow: hidden;
 }
 
-.progress__bar { display: flex; }
 .progress__fill { height: 100%; background: var(--ok); }
-
-/* Beolvasva, de még nem exportálva: csíkozva, hogy elváljon a késztől. */
-.progress__fill--pending {
-  background: repeating-linear-gradient(
-    45deg, var(--warn) 0 4px, var(--warn-soft) 4px 8px);
-}
+.progress__fill--partial { background: var(--warn); }
 .progress__text { font-variant-numeric: tabular-nums; color: var(--steel-500); font-size: 13px; }
 
 /* --- üzenetek ------------------------------------------------------ */

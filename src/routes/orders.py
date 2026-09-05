@@ -30,45 +30,8 @@ from src.services.order_import import extract_order_number, import_order, parse_
 router = APIRouter(prefix="/api/orders", tags=["megrendelések"])
 
 
-def _pending_quantities(db: Session, order: PurchaseOrder) -> dict[int, Decimal]:
-    """Rendeléstételenként a még nem exportált bevételezésekben lefoglalt mennyiség.
-
-    A `received_qty` csak exportkor nő, de az adminnak látnia kell, mi van
-    már beolvasva — különben a lista azt mutatja, hogy semmi sem érkezett.
-    """
-    item_ids = [i.id for i in order.items]
-    if not item_ids:
-        return {}
-
-    rows = db.execute(
-        select(ReceiptItem.purchase_order_item_id, func.sum(ReceiptItem.qty))
-        .join(Receipt)
-        .where(
-            ReceiptItem.purchase_order_item_id.in_(item_ids),
-            Receipt.status != ReceiptStatus.exported,
-        )
-        .group_by(ReceiptItem.purchase_order_item_id)
-    ).all()
-    return {row[0]: Decimal(row[1]) for row in rows}
-
-
-def _pending_receipt_count(db: Session, order: PurchaseOrder) -> int:
-    item_ids = [i.id for i in order.items]
-    if not item_ids:
-        return 0
-    return db.scalar(
-        select(func.count(func.distinct(ReceiptItem.receipt_id)))
-        .join(Receipt)
-        .where(
-            ReceiptItem.purchase_order_item_id.in_(item_ids),
-            Receipt.status != ReceiptStatus.exported,
-        )
-    ) or 0
-
-
 def _to_order_out(order: PurchaseOrder, db: Session, with_items: bool = False):
     items = order.items
-    pending = _pending_quantities(db, order)
     data = {
         "id": order.id,
         "order_number": order.order_number,
@@ -81,16 +44,9 @@ def _to_order_out(order: PurchaseOrder, db: Session, with_items: bool = False):
         "uploaded_at": order.uploaded_at,
         "note": order.note,
         "item_count": len(items),
-        # Kész az a tétel, amiből nincs több hátra: se rendelt maradék,
-        # se hiány a folyamatban lévő beolvasások után.
-        "completed_item_count": sum(
-            1 for i in items
-            if i.remaining_qty - pending.get(i.id, Decimal(0)) <= 0
-        ),
+        "completed_item_count": sum(1 for i in items if i.remaining_qty <= 0),
         "ordered_total": sum((Decimal(i.ordered_qty) for i in items), Decimal(0)),
         "received_total": sum((Decimal(i.received_qty) for i in items), Decimal(0)),
-        "pending_total": sum(pending.values(), Decimal(0)),
-        "pending_receipt_count": _pending_receipt_count(db, order),
     }
     if not with_items:
         return OrderOut(**data)
@@ -105,9 +61,7 @@ def _to_order_out(order: PurchaseOrder, db: Session, with_items: bool = False):
             unit=i.unit,
             ordered_qty=i.ordered_qty,
             received_qty=i.received_qty,
-            pending_qty=pending.get(i.id, Decimal(0)),
             remaining_qty=i.remaining_qty,
-            open_qty=i.remaining_qty - pending.get(i.id, Decimal(0)),
             net_unit_price=i.net_unit_price,
             line_no=i.line_no,
         )

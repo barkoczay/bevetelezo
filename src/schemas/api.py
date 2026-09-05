@@ -67,10 +67,10 @@ class OrderItemOut(ORMModel):
     name_snapshot: str
     unit: str
     ordered_qty: Decimal
-    received_qty: Decimal          # csak exportált bevételezésekből
-    pending_qty: Decimal = Decimal(0)   # beolvasva, de még nem exportálva
-    remaining_qty: Decimal         # ordered - received
-    open_qty: Decimal = Decimal(0)      # ordered - received - pending: ami tényleg hiányzik
+    # Minden beolvasást tartalmaz, a bevételezés állapotától függetlenül:
+    # a beolvasott áru fizikailag megérkezett.
+    received_qty: Decimal
+    remaining_qty: Decimal         # ordered - received: ami még hiányzik
     net_unit_price: Decimal | None
     line_no: int
 
@@ -91,11 +91,6 @@ class OrderOut(ORMModel):
     completed_item_count: int = 0
     ordered_total: Decimal = Decimal(0)
     received_total: Decimal = Decimal(0)
-    # Beolvasva, de még nem exportálva — a raktárban már megvan, csak a
-    # Naturasoftba nem került be. Enélkül a lista azt mutatná, hogy
-    # semmi nem érkezett, pedig az áru már bent van.
-    pending_total: Decimal = Decimal(0)
-    pending_receipt_count: int = 0
 
 
 class OrderDetailOut(OrderOut):

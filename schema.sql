@@ -259,3 +259,21 @@ CREATE TABLE product_import_log (
 -- ALTER TABLE product ADD COLUMN source product_source NOT NULL DEFAULT 'naturasoft';
 -- A már meglévő termékek a Naturasoftból jöttek:
 -- UPDATE product SET in_naturasoft = TRUE;
+
+-- 2026-09-05: a beolvasás azonnal bevételezésnek számít (nem csak exportkor)
+-- A meglévő adatok újraszámolása:
+--
+-- UPDATE purchase_order_item
+--    SET received_qty = COALESCE(
+--          (SELECT SUM(ri.qty) FROM receipt_item ri
+--            WHERE ri.purchase_order_item_id = purchase_order_item.id), 0);
+--
+-- UPDATE purchase_order o SET status = CASE
+--     WHEN o.closed_manually THEN 'closed'
+--     WHEN NOT EXISTS (SELECT 1 FROM purchase_order_item i
+--                       WHERE i.purchase_order_id = o.id
+--                         AND i.ordered_qty > i.received_qty) THEN 'closed'
+--     WHEN EXISTS (SELECT 1 FROM purchase_order_item i
+--                   WHERE i.purchase_order_id = o.id
+--                     AND i.received_qty > 0) THEN 'partial'
+--     ELSE 'open' END;

@@ -29,7 +29,7 @@ from src.schemas.api import (
     UnknownScanOut,
 )
 from src.routes.core import _strip_separators, normalize_code
-from src.services.fifo import apply_scan
+from src.services.fifo import apply_scan, recalculate
 from src.services.naturasoft_export import XLS_MEDIA_TYPE, export_receipt
 
 router = APIRouter(prefix="/api/receipts", tags=["bevételezés"])
@@ -221,10 +221,13 @@ def set_quantity(
     if qty < 0:
         raise HTTPException(400, "A mennyiség nem lehet negatív.")
 
+    touched: list[int] = []
     for item in list(receipt.items):
         if item.product_id == product.id:
+            touched.append(item.purchase_order_item_id)
             db.delete(item)
     db.flush()
+    recalculate(db, touched)   # előbb felszabadítjuk, hogy legyen mihez allokálni
 
     items = []
     if qty > 0:
@@ -250,8 +253,7 @@ def remove_product(
 ):
     """Téves beolvasás visszavonása: a termék összes sora törlődik.
 
-    Mivel a rendelés maradéka csak exportkor csökken, a visszavont
-    mennyiség automatikusan elérhető marad a következő bevételezéshez.
+    A visszavont mennyiség azonnal visszakerül a megrendelés maradékába.
     """
     receipt = _get_editable(db, receipt_id)
     if receipt.locked_by not in (None, user.id):
@@ -262,10 +264,14 @@ def remove_product(
         raise HTTPException(404, "Nincs ilyen termék.")
 
     removed = 0
+    touched: list[int] = []
     for item in list(receipt.items):
         if item.product_id == product.id:
+            touched.append(item.purchase_order_item_id)
             db.delete(item)
             removed += 1
+    db.flush()
+    recalculate(db, touched)
     db.commit()
 
     if not removed:
@@ -285,10 +291,7 @@ def finish_scanning(
     db: Session = Depends(get_db),
     user: AppUser = Depends(current_user),
 ):
-    """A raktáros végzett. Innentől az admin szerkesztheti.
-
-    A rendelések maradéka MÉG NEM változik — az csak exportkor történik.
-    """
+    """A raktáros végzett. Innentől az admin szerkesztheti."""
     receipt = _get_editable(db, receipt_id)
     receipt.status = ReceiptStatus.scanned
     receipt.scanned_at = datetime.now()
@@ -363,6 +366,8 @@ def update_item(
         item.net_unit_price = payload.net_unit_price
     if payload.note is not None:
         item.note = payload.note or None
+    db.flush()
+    recalculate(db, [item.purchase_order_item_id])
     db.commit()
     db.refresh(item)
     return _item_out(item)
@@ -377,15 +382,17 @@ def delete_item(
 ):
     """Tétel törlése.
 
-    Export előtt szabadon törölhető: a mennyiség soha nem került le a
-    rendelés maradékáról, tehát automatikusan visszakerül a következő
-    bevételezéshez.
+    A mennyiség azonnal visszakerül a megrendelés maradékába, tehát a
+    következő bevételezésnél újra megjelenik.
     """
     _get_editable(db, receipt_id)
     item = db.get(ReceiptItem, item_id)
     if item is None or item.receipt_id != receipt_id:
         raise HTTPException(404, "Nincs ilyen tétel ebben a bevételezésben.")
+    po_item_id = item.purchase_order_item_id
     db.delete(item)
+    db.flush()
+    recalculate(db, [po_item_id])
     db.commit()
 
 
