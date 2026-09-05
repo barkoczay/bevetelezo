@@ -339,16 +339,14 @@ function renderReceiptDetail() {
   $('rd-reference').disabled = !editable;
   $('rd-save-ref').disabled = !editable;
   $('rd-export').disabled = !editable;
-  $('rd-export').textContent = editable
-    ? 'Excel letöltése és lezárás'
-    : 'Már exportálva';
+  $('rd-export').textContent = editable ? 'Excel letöltése' : 'Már exportálva';
 
   const missingPrice = r.items.filter(
     (i) => i.net_unit_price === null || i.net_unit_price === undefined).length;
 
   if (!editable) {
     note('rd-note',
-      'Ez a bevételezés exportálva lett, ezért nem módosítható. Ha javítani kell, azt a Naturasoftban tedd meg.',
+      'Ez a bevételezés lezárult az export után, ezért nem módosítható. Ha javítani kell, azt a Naturasoftban tedd meg.',
       'warn');
   } else if (missingPrice) {
     note('rd-note',
@@ -504,7 +502,8 @@ async function saveReference() {
 
 async function exportReceipt() {
   if (!confirm(
-    'Az export után a bevételezés nem módosítható, és a megrendelések maradéka csökken.\n\nFolytatod?'
+    'A letöltés után ez a bevételezés lezárul, és nem lesz módosítható.\n\n' +
+    'A megrendelés nyitva marad: ami még nem érkezett meg, azt később egy új bevételezésben lehet felvenni.\n\nFolytatod?'
   )) return;
 
   try {
@@ -524,7 +523,9 @@ async function exportReceipt() {
     URL.revokeObjectURL(url);
 
     await openReceipt(state.receipt.id);
-    note('rd-note', `${filename} letöltve. A bevételezés lezárult.`, 'ok');
+    note('rd-note',
+      `${filename} letöltve. Ez a bevételezés lezárult — a megrendelés maradékát egy új bevételezésben lehet folytatni.`,
+      'ok');
   } catch (err) { note('rd-note', err.message); }
 }
 
@@ -626,7 +627,12 @@ function renderOrderDetail() {
   if (o.supplier_id) $('od-supplier').value = String(o.supplier_id);
 
   const closeBtn = $('od-close');
-  closeBtn.textContent = o.status === 'closed' ? 'Újranyitás' : 'Lezárás';
+  // A megrendelés magától lezárul, ha minden megérkezik. Ez a gomb arra
+  // való, amikor a maradék soha nem fog megjönni.
+  closeBtn.textContent = o.status === 'closed'
+    ? 'Újranyitás'
+    : 'A maradék nem érkezik meg';
+  closeBtn.hidden = o.status === 'closed' && !o.closed_manually;
 
   if (o.status === 'closed' && o.closed_manually) {
     note('od-note',
@@ -684,7 +690,8 @@ async function saveOrder() {
 async function toggleOrderClosed() {
   const closing = state.order.status !== 'closed';
   if (closing && !confirm(
-    'Lezárod a megrendelést? A maradék tételekre a rendszer nem fog többé bevételezni.'
+    'Lezárod a megrendelést?\n\nEzt csak akkor tedd, ha a hiányzó tételek már nem fognak megérkezni. ' +
+    'A rendszer onnantól nem könyvel rájuk bevételezést.'
   )) return;
 
   try {
