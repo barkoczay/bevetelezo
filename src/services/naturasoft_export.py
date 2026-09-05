@@ -94,10 +94,11 @@ def build_workbook(receipt: Receipt) -> bytes:
         ws.write(row_idx, 1, g["name"])
         ws.write(row_idx, 2, g["ean"] or "", text_style)
         ws.write(row_idx, 3, float(g["qty"]))
+        # Ár nélküli (rendelésen kívüli) tételnél a cellát üresen hagyjuk.
+        # Üres szöveget nem írunk: a Naturasoft számot vár ebben az
+        # oszlopban, és a szöveges cella hibát okozhat az importnál.
         if g["price"] is not None:
             ws.write(row_idx, 4, float(g["price"]))
-        else:
-            ws.write(row_idx, 4, "")
         ws.write(row_idx, 5, g["vat_name"] or "")
         ws.write(row_idx, 6, note)
 

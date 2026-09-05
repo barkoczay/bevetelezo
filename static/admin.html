@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#10151a">
+<title>Bevételezés — admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<!-- ------------------------------------------------------ bejelentkezés -->
+<div id="login-wrap" class="page" style="max-width:380px">
+  <h1>Admin</h1>
+  <p class="lede">Bevételezések áttekintése és lezárása.</p>
+  <div class="field"><label for="login-user">Felhasználónév</label>
+    <input id="login-user" autocomplete="username" autocapitalize="none"></div>
+  <div class="field" style="margin-top:10px"><label for="login-pass">Jelszó</label>
+    <input id="login-pass" type="password" autocomplete="current-password"></div>
+  <div class="note note--error" id="login-error" style="margin-top:12px"></div>
+  <button class="btn btn--primary" id="login-btn" style="margin-top:12px;width:100%">Belépés</button>
+</div>
+
+<!-- ------------------------------------------------------------ alkalmazás -->
+<div id="app" hidden>
+  <nav class="top">
+    <span class="top__brand">Bevételezés</span>
+    <button class="tab is-active" data-panel="receipts">Bevételezések</button>
+    <button class="tab" data-panel="orders">Megrendelések</button>
+    <button class="tab" data-panel="suppliers">Szállítók</button>
+    <button class="tab" data-panel="products">Terméktörzs</button>
+    <span class="top__user" id="who"></span>
+    <button class="top__logout" id="logout-btn">Kilép</button>
+  </nav>
+
+  <main class="page">
+
+    <!-- ------------------------------------------------ bevételezések -->
+    <section class="panel is-active" id="panel-receipts">
+      <h1>Bevételezések</h1>
+      <p class="lede">A raktáros beolvasása után itt nézhető át és javítható,
+        mielőtt Excelbe kerül.</p>
+
+      <div class="toolbar">
+        <div class="field"><label for="receipt-status">Állapot</label>
+          <select id="receipt-status">
+            <option value="">Mind</option>
+            <option value="in_progress">Folyamatban</option>
+            <option value="scanned" selected>Beolvasva</option>
+            <option value="exported">Exportálva</option>
+          </select></div>
+        <button class="btn toolbar--right" id="receipt-refresh">Frissítés</button>
+      </div>
+
+      <div class="note" id="receipt-note"></div>
+      <div class="card"><div id="receipt-list"></div></div>
+    </section>
+
+    <!-- ------------------------------------ egy bevételezés részletei -->
+    <section class="panel" id="panel-receipt">
+      <button class="back" id="receipt-back">← Vissza a listához</button>
+      <div class="detail__head">
+        <div>
+          <h1 id="rd-title">Bevételezés</h1>
+          <div class="detail__facts" id="rd-facts"></div>
+        </div>
+      </div>
+
+      <div class="note" id="rd-note"></div>
+
+      <div class="toolbar">
+        <div class="field" style="min-width:260px">
+          <label for="rd-reference">Hivatkozási szám</label>
+          <input id="rd-reference" placeholder="pl. 9686, 9701">
+        </div>
+        <button class="btn" id="rd-save-ref">Mentés</button>
+        <button class="btn btn--primary toolbar--right" id="rd-export">Excel letöltése és lezárás</button>
+      </div>
+
+      <div class="card"><div id="rd-items"></div></div>
+
+      <h2 id="rd-unknown-title" hidden>Félretett beolvasások</h2>
+      <div class="card" id="rd-unknown-card" hidden><div id="rd-unknown"></div></div>
+    </section>
+
+    <!-- ------------------------------------------------ megrendelések -->
+    <section class="panel" id="panel-orders">
+      <h1>Megrendelések</h1>
+      <p class="lede">A feltöltött szállítói megrendelések és a bevételezés
+        előrehaladása.</p>
+
+      <div class="toolbar">
+        <div class="field"><label for="order-status">Állapot</label>
+          <select id="order-status">
+            <option value="">Mind</option>
+            <option value="open">Nyitott</option>
+            <option value="partial">Részben teljesített</option>
+            <option value="closed">Lezárt</option>
+          </select></div>
+        <div class="field"><label for="order-search">Rendelésszám</label>
+          <input id="order-search" placeholder="pl. 9686"></div>
+        <button class="btn toolbar--right" id="order-refresh">Frissítés</button>
+      </div>
+
+      <div class="note" id="order-note"></div>
+      <div class="card"><div id="order-list"></div></div>
+
+      <h2>Új megrendelés feltöltése</h2>
+      <div class="toolbar">
+        <div class="field"><label for="order-file">Naturasoft tétellista (.xls)</label>
+          <input type="file" id="order-file" accept=".xls,.xlsx"></div>
+        <div class="field"><label for="order-number">Rendelésszám</label>
+          <input id="order-number" placeholder="a fájlnévből"></div>
+        <div class="field"><label for="order-date">Dátum</label>
+          <input type="date" id="order-date"></div>
+        <div class="field"><label for="order-supplier">Szállító</label>
+          <select id="order-supplier"></select></div>
+        <button class="btn btn--primary" id="order-upload">Feltöltés</button>
+      </div>
+      <div class="note" id="upload-note"></div>
+      <div class="card" id="preview-card" hidden><div id="order-preview"></div></div>
+    </section>
+
+    <!-- --------------------------------- egy megrendelés részletei -->
+    <section class="panel" id="panel-order">
+      <button class="back" id="order-back">← Vissza a listához</button>
+      <div class="detail__head">
+        <div>
+          <h1 id="od-title">Megrendelés</h1>
+          <div class="detail__facts" id="od-facts"></div>
+        </div>
+      </div>
+      <div class="note" id="od-note"></div>
+      <div class="toolbar">
+        <div class="field"><label for="od-date">Dátum (FIFO sorrend)</label>
+          <input type="date" id="od-date"></div>
+        <div class="field"><label for="od-supplier">Szállító</label>
+          <select id="od-supplier"></select></div>
+        <button class="btn" id="od-save">Mentés</button>
+        <button class="btn toolbar--right" id="od-close">Lezárás</button>
+        <button class="btn btn--danger" id="od-delete">Törlés</button>
+      </div>
+      <div class="card"><div id="od-items"></div></div>
+    </section>
+
+    <!-- ------------------------------------------------------ szállítók -->
+    <section class="panel" id="panel-suppliers">
+      <h1>Szállítók</h1>
+      <p class="lede">A raktáros ebből a listából választ a bevételezés
+        indításakor. A Naturasoft exportja nem tartalmazza a szállítót,
+        ezért itt kell karbantartani.</p>
+
+      <div class="toolbar">
+        <div class="field" style="min-width:280px"><label for="supplier-name">Új szállító neve</label>
+          <input id="supplier-name"></div>
+        <button class="btn btn--primary" id="supplier-add">Hozzáadás</button>
+      </div>
+      <div class="note" id="supplier-note"></div>
+      <div class="card"><div id="supplier-list"></div></div>
+    </section>
+
+    <!-- ---------------------------------------------------- terméktörzs -->
+    <section class="panel" id="panel-products">
+      <h1>Terméktörzs</h1>
+      <p class="lede">A Naturasoft terméknyilvántartás importja. Frissít és
+        hozzáad, soha nem töröl — egy hibás export nem üríti ki a törzset.</p>
+
+      <div class="toolbar">
+        <div class="field"><label for="product-file">Terméknyilvántartás (.xls)</label>
+          <input type="file" id="product-file" accept=".xls,.xlsx"></div>
+        <button class="btn btn--primary" id="product-import">Import indítása</button>
+      </div>
+      <div class="note" id="product-note"></div>
+      <div id="product-warnings" class="warnings"></div>
+
+      <h2>Keresés a törzsben</h2>
+      <div class="toolbar">
+        <div class="field" style="min-width:320px"><label for="product-search">Név vagy cikkszám</label>
+          <input id="product-search" placeholder="pl. kcf 250"></div>
+      </div>
+      <div class="card"><div id="product-results"></div></div>
+    </section>
+
+  </main>
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>
