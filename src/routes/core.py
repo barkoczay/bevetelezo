@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, or_, select
@@ -131,27 +133,37 @@ def search_products(
 ):
     """Kézi és hangos kereséshez.
 
-    A hangfelismerés pontatlanságát a részszavas keresés tolerálja: elég
-    a név egy töredéke vagy a cikkszám vége. A cikkszámnál az elválasztó
-    karakterek nem számítanak: 'cvampi' megtalálja a 'CVA-MPI'-t.
+    A beírt szöveget szavakra bontjuk, és MINDEN szónak illeszkednie kell
+    a termék nevében vagy cikkszámában. Az elválasztó karakterek
+    (kötőjel, perjel, pont, szóköz) sehol nem számítanak, sem a keresett
+    szövegben, sem a termék adataiban.
+
+    Így a 'kcf 250' megtalálja a 'KCF-N 250 D2 40'-et.
+
+    A vonalkódban NEM keresünk: azt senki nem mondja ki és nem gépeli be,
+    a szkenner pedig a beolvasás végpontján oldja fel pontos egyezéssel.
     """
     term = q.strip()
     if not term:
         return []
 
-    pattern = f"%{term}%"
-    code_pattern = f"%{normalize_code(term)}%"
+    # A keresett szöveg szavai. Az elválasztókat szóközre cseréljük, hogy
+    # a 'kcf-n' két szónak számítson, és így a 'kcf' is illeszkedjen.
+    words = [w for w in re.split(r"[\s\-./_]+", term) if w]
+    if not words:
+        return []
+
+    name_key = func.lower(_strip_separators(Product.name))
+    sku_key = func.lower(_strip_separators(Product.sku))
+
+    conditions = []
+    for word in words:
+        needle = f"%{normalize_code(word).lower()}%"
+        conditions.append(or_(name_key.like(needle), sku_key.like(needle)))
 
     stmt = (
         select(Product)
-        .where(
-            Product.inactive.is_(False),
-            or_(
-                Product.name.ilike(pattern),
-                _strip_separators(Product.sku).ilike(code_pattern),
-                _strip_separators(Product.ean).ilike(code_pattern),
-            ),
-        )
+        .where(Product.inactive.is_(False), *conditions)
         .order_by(func.length(Product.name))
         .limit(limit)
     )

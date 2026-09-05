@@ -674,7 +674,7 @@ async function voiceSearch(term) {
     renderSearchResults(results);
     $('search-input').value = term;
     show('search');
-    say(`${results.length} találat. Mondd a sorszámot: első, második.`);
+    say('Válassz a listából');
   } catch (err) {
     setFeedback('stop', 'A keresés nem sikerült', null, err.message);
   }
