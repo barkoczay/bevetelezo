@@ -563,22 +563,40 @@ function renderOrders(orders) {
     if (o.closed_manually) statusCell.appendChild(element('span', 'muted', ' kézzel'));
     tr.appendChild(statusCell);
 
-    // Előrehaladás darabszám alapján — ez mutatja meg valósághűen,
-    // mennyi áru érkezett meg ténylegesen.
+    /* Az előrehaladás két rétegű: a sötét rész már exportálva van
+       (a Naturasoftban is szerepel), a világos csíkos rész be van
+       olvasva, de még nem exportálva. Enélkül az admin azt hinné,
+       hogy semmi nem érkezett. */
     const ordered = Number(o.ordered_total) || 0;
     const received = Number(o.received_total) || 0;
-    const percent = ordered ? Math.min(100, (received / ordered) * 100) : 0;
+    const pending = Number(o.pending_total) || 0;
+    const donePercent = ordered ? Math.min(100, (received / ordered) * 100) : 0;
+    const pendingPercent = ordered
+      ? Math.min(100 - donePercent, (pending / ordered) * 100) : 0;
 
     const progressCell = element('td');
     const wrap = element('div', 'progress');
     const bar = element('div', 'progress__bar');
-    const fill = element('div', `progress__fill${percent < 100 ? ' progress__fill--partial' : ''}`);
-    fill.style.width = `${percent}%`;
-    bar.appendChild(fill);
+    const done = element('div', 'progress__fill');
+    done.style.width = `${donePercent}%`;
+    const inFlight = element('div', 'progress__fill progress__fill--pending');
+    inFlight.style.width = `${pendingPercent}%`;
+    bar.appendChild(done);
+    bar.appendChild(inFlight);
     wrap.appendChild(bar);
-    wrap.appendChild(element('span', 'progress__text', `${qty(received)} / ${qty(ordered)}`));
+    wrap.appendChild(element('span', 'progress__text',
+      `${qty(received + pending)} / ${qty(ordered)}`));
     progressCell.appendChild(wrap);
     tr.appendChild(progressCell);
+
+    const pendingCell = element('td', 'num');
+    if (pending > 0) {
+      pendingCell.appendChild(element('span', 'tag tag--partial',
+        `${qty(pending)} db beolvasva`));
+    } else {
+      pendingCell.appendChild(element('span', 'muted', '—'));
+    }
+    tr.appendChild(pendingCell);
 
     tr.appendChild(element('td', 'num',
       `${o.completed_item_count} / ${o.item_count}`));
@@ -589,6 +607,7 @@ function renderOrders(orders) {
 
   host.appendChild(table(
     ['Rendelésszám', 'Dátum', 'Szállító', 'Állapot', 'Beérkezett',
+     { label: 'Folyamatban', className: 'num' },
      { label: 'Kész tétel', className: 'num' }],
     rows,
   ));
@@ -633,11 +652,16 @@ function renderOrderDetail() {
       'warn');
   }
 
+  let pendingItems = 0;
+
   const rows = o.items.map((item) => {
     const tr = element('tr');
-    const remaining = Number(item.remaining_qty);
-    if (remaining <= 0) tr.classList.add('state-closed');
-    else if (Number(item.received_qty) > 0) tr.classList.add('state-partial');
+    const pending = Number(item.pending_qty) || 0;
+    const open = Number(item.open_qty);
+    if (pending > 0) pendingItems += 1;
+
+    if (open <= 0) tr.classList.add('state-closed');
+    else if (Number(item.received_qty) > 0 || pending > 0) tr.classList.add('state-partial');
     else tr.classList.add('state-open');
 
     tr.appendChild(element('td', 'wrap', item.name_snapshot));
@@ -645,13 +669,24 @@ function renderOrderDetail() {
     tr.appendChild(element('td', 'num', qty(item.ordered_qty)));
     tr.appendChild(element('td', 'num', qty(item.received_qty)));
 
-    const remainingCell = element('td', 'num', qty(remaining));
-    if (remaining > 0) remainingCell.classList.add('muted');
-    tr.appendChild(remainingCell);
+    const pendingCell = element('td', 'num');
+    pendingCell.textContent = pending > 0 ? qty(pending) : '—';
+    if (pending > 0) pendingCell.classList.add('pending');
+    tr.appendChild(pendingCell);
+
+    const openCell = element('td', 'num', qty(open));
+    if (open <= 0) openCell.classList.add('muted');
+    tr.appendChild(openCell);
 
     tr.appendChild(element('td', 'num', money(item.net_unit_price)));
     return tr;
   });
+
+  if (pendingItems && o.status !== 'closed') {
+    note('od-note',
+      `${pendingItems} tétel be van olvasva, de a bevételezés még nincs exportálva. Az „Érkezett” oszlop csak az exportált mennyiséget mutatja.`,
+      'warn');
+  }
 
   const host = $('od-items');
   host.innerHTML = '';
@@ -659,7 +694,8 @@ function renderOrderDetail() {
     ['Megnevezés', 'Cikkszám',
      { label: 'Rendelt', className: 'num' },
      { label: 'Érkezett', className: 'num' },
-     { label: 'Maradék', className: 'num' },
+     { label: 'Beolvasva', className: 'num' },
+     { label: 'Még hiányzik', className: 'num' },
      { label: 'Nettó ár', className: 'num' }],
     rows,
   ));
