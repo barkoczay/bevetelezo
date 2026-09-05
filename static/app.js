@@ -94,6 +94,7 @@ async function login() {
 }
 
 function logout() {
+  voice.stop();
   state.token = null;
   state.receiptId = null;
   localStorage.removeItem('token');
@@ -392,18 +393,28 @@ function handleScanKey(event) {
   }, 120);
 }
 
-/* --- hang --------------------------------------------------------------- */
+/* --- hang --------------------------------------------------------------- 
+
+   Kihangosított mód: a mikrofon nyitva marad, a raktáros nem nyúl a
+   telefonhoz. A felismerés minden csendszünet után magától újraindul.
+   ------------------------------------------------------------------------ */
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const NUMBER_WORDS = {
   egy: 1, kettő: 2, ketto: 2, két: 2, ket: 2, három: 3, harom: 3, négy: 4, negy: 4,
   öt: 5, ot: 5, hat: 6, hét: 7, het: 7, nyolc: 8, kilenc: 9, tíz: 10, tiz: 10,
-  tizenegy: 11, tizenkettő: 12, tizenketto: 12, tizenhárom: 13, tizenharom: 13,
-  tizennégy: 14, tizennegy: 14, tizenöt: 15, tizenot: 15, tizenhat: 16,
-  tizenhét: 17, tizenhet: 17, tizennyolc: 18, tizenkilenc: 19,
+  tizenegy: 11, tizenkettő: 12, tizenketto: 12, tizenkét: 12, tizenhárom: 13,
+  tizenharom: 13, tizennégy: 14, tizennegy: 14, tizenöt: 15, tizenot: 15,
+  tizenhat: 16, tizenhét: 17, tizenhet: 17, tizennyolc: 18, tizenkilenc: 19,
   húsz: 20, husz: 20, harminc: 30, negyven: 40, ötven: 50, otven: 50,
   hatvan: 60, hetven: 70, nyolcvan: 80, kilencven: 90, száz: 100, szaz: 100,
+};
+
+/* A magyar 20-99 alakjai külön tőből képződnek: huszon-, harminc-, ... */
+const TENS_PREFIX = {
+  huszon: 20, harminc: 30, negyven: 40, ötven: 50, otven: 50,
+  hatvan: 60, hetven: 70, nyolcvan: 80, kilencven: 90,
 };
 
 function parseHungarianNumber(text) {
@@ -414,7 +425,15 @@ function parseHungarianNumber(text) {
 
   if (NUMBER_WORDS[clean] !== undefined) return NUMBER_WORDS[clean];
 
-  // összetett alak: "huszonöt", "harminckettő" — szóösszetétel bontása
+  // összetett alak egy szóban: "huszonöt", "harminckettő"
+  for (const [prefix, base] of Object.entries(TENS_PREFIX)) {
+    if (clean.startsWith(prefix) && clean.length > prefix.length) {
+      const rest = clean.slice(prefix.length);
+      if (NUMBER_WORDS[rest] !== undefined) return base + NUMBER_WORDS[rest];
+    }
+  }
+
+  // külön ejtett alak: "harminc kettő"
   const parts = clean.split(/\s+/);
   let total = 0;
   let matched = false;
@@ -424,61 +443,132 @@ function parseHungarianNumber(text) {
   return matched ? total : null;
 }
 
-function listen({ onResult, button, hint }) {
-  if (!SpeechRecognition) {
-    setFeedback('warn', 'A hangfelismerés nem érhető el', null,
-      'Ez a böngésző nem támogatja. Használd a szkennert vagy a keresést.');
-    return;
-  }
+/* Kihangosított figyelés: egy példány, ami a képernyőnek megfelelően
+   más-más módban dolgozza fel a hallottakat. */
+const voice = {
+  recognition: null,
+  enabled: false,
+  mode: 'scan',       // 'scan' vagy 'search'
+  restarting: false,
 
-  const recognition = new SpeechRecognition();
-  recognition.lang = 'hu-HU';
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 3;
+  supported() { return Boolean(SpeechRecognition); },
 
-  if (button) button.classList.add('btn--listening');
-  if (hint) hint();
-
-  recognition.onresult = (event) => {
-    const alternatives = [];
-    for (let i = 0; i < event.results[0].length; i++) {
-      alternatives.push(event.results[0][i].transcript);
+  start(mode) {
+    if (!this.supported()) {
+      setFeedback('warn', 'A hangfelismerés nem érhető el', null,
+        'Ez a böngésző nem támogatja. Használd a szkennert vagy a keresést.');
+      return;
     }
-    onResult(alternatives);
-  };
+    this.mode = mode;
+    this.enabled = true;
+    this.launch();
+    updateVoiceButtons();
+    if (mode === 'scan') {
+      $('fb-hint').textContent =
+        'Hallgatlak. Mondd a darabszámot, vagy hogy „vissza”.';
+    }
+  },
 
-  recognition.onerror = () => {
-    setFeedback('warn', 'Nem értettem', null, 'Próbáld újra, vagy írd be kézzel.');
-  };
+  stop() {
+    if (this.enabled && this.mode === 'scan') {
+      $('fb-hint').textContent = 'A szkenner készen áll.';
+    }
+    this.enabled = false;
+    if (this.recognition) {
+      try { this.recognition.abort(); } catch (_) { /* már leállt */ }
+    }
+    updateVoiceButtons();
+  },
 
-  recognition.onend = () => {
-    if (button) button.classList.remove('btn--listening');
-    focusScanner();
-  };
+  launch() {
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'hu-HU';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 3;
 
-  recognition.start();
-}
-
-function listenForQuantity() {
-  listen({
-    button: $('voice-btn'),
-    hint: () => {
-      const box = $('feedback');
-      $('fb-hint').textContent = 'Hallgatlak — mondd a darabszámot.';
-      box.dataset.state = box.dataset.state || 'idle';
-    },
-    onResult: (alternatives) => {
-      for (const text of alternatives) {
-        const value = parseHungarianNumber(text);
-        if (value !== null && value > 0 && value < 10000) {
-          setQuantityForLast(value);
-          return;
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) continue;
+        const alternatives = [];
+        for (let j = 0; j < event.results[i].length; j++) {
+          alternatives.push(event.results[i][j].transcript);
         }
+        this.handle(alternatives);
       }
-      setFeedback('warn', 'Nem értettem a számot', null,
-        `Ezt hallottam: „${alternatives[0]}”. Próbáld újra.`);
-    },
-  });
+    };
+
+    recognition.onerror = (event) => {
+      // 'no-speech' és 'aborted' természetes szünet — az onend újraindítja
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        this.enabled = false;
+        updateVoiceButtons();
+        setFeedback('warn', 'A mikrofon nincs engedélyezve', null,
+          'Engedélyezd a böngészőben, vagy használd a gombokat.');
+      }
+    };
+
+    recognition.onend = () => {
+      // A Chrome hosszabb csend után magától leáll — újraindítjuk.
+      if (!this.enabled || this.restarting) return;
+      this.restarting = true;
+      setTimeout(() => {
+        this.restarting = false;
+        if (this.enabled) {
+          try { this.launch(); } catch (_) { this.enabled = false; updateVoiceButtons(); }
+        }
+      }, 250);
+    };
+
+    this.recognition = recognition;
+    try {
+      recognition.start();
+    } catch (_) { /* már fut */ }
+  },
+
+  handle(alternatives) {
+    if (this.mode === 'search') {
+      $('search-input').value = alternatives[0];
+      runSearch(alternatives[0]);
+      return;
+    }
+
+    // szkennelés közben: a javító lap nyitva van -> nem nyúlunk bele
+    if (!$('edit-sheet').hidden) return;
+    if (!$('screen-scan').classList.contains('is-active')) return;
+
+    for (const text of alternatives) {
+      const clean = text.toLowerCase().trim();
+
+      if (/^(töröl|torol|vissza|visszavon|visszavonás|visszavonas)$/.test(clean)) {
+        if (state.lastProductCode) removeProduct(state.lastProductCode);
+        return;
+      }
+
+      const value = parseHungarianNumber(text);
+      if (value !== null && value > 0 && value < 10000) {
+        setQuantityForLast(value);
+        return;
+      }
+    }
+
+    // Nem szám és nem parancs: valószínűleg háttérbeszéd, csendben hagyjuk.
+  },
+};
+
+function updateVoiceButtons() {
+  const scanBtn = $('voice-btn');
+  const searchBtn = $('search-voice');
+  const onScan = voice.enabled && voice.mode === 'scan';
+  const onSearch = voice.enabled && voice.mode === 'search';
+
+  scanBtn.classList.toggle('btn--listening', onScan);
+  scanBtn.textContent = onScan ? 'Hang be' : 'Hang';
+  scanBtn.setAttribute('aria-pressed', String(onScan));
+
+  searchBtn.classList.toggle('btn--listening', onSearch);
+  searchBtn.textContent = onSearch ? 'Hallgatlak' : 'Mondd a nevét';
+  searchBtn.setAttribute('aria-pressed', String(onSearch));
 }
 
 /* --- keresés ------------------------------------------------------------ */
@@ -529,6 +619,7 @@ async function finishReceipt() {
   }
   try {
     const receipt = await api(`/receipts/${state.receiptId}/finish`, { method: 'POST' });
+    voice.stop();
     const pieces = state.items.reduce((sum, i) => sum + Number(i.qty), 0);
     $('done-summary').textContent =
       `${receipt.item_count} tétel, ${formatQty(pieces)} darab rögzítve.` +
@@ -572,16 +663,23 @@ $('login-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') logi
 $('logout-btn').addEventListener('click', logout);
 $('start-btn').addEventListener('click', startReceipt);
 $('finish-btn').addEventListener('click', finishReceipt);
-$('voice-btn').addEventListener('click', listenForQuantity);
+$('voice-btn').addEventListener('click', () => {
+  if (voice.enabled && voice.mode === 'scan') voice.stop();
+  else voice.start('scan');
+});
 $('done-btn').addEventListener('click', openStart);
 
 $('search-btn').addEventListener('click', () => {
+  if (voice.enabled) voice.start('search');   // átvált keresés módba
   $('search-input').value = '';
   $('search-results').innerHTML = '<p class="empty">Írd be a termék nevének egy részletét.</p>';
   show('search');
 });
 
-$('search-back').addEventListener('click', () => show('scan'));
+$('search-back').addEventListener('click', () => {
+  if (voice.enabled) voice.start('scan');
+  show('scan');
+});
 
 $('search-input').addEventListener('input', (e) => {
   clearTimeout(searchTimer);
@@ -590,13 +688,8 @@ $('search-input').addEventListener('input', (e) => {
 });
 
 $('search-voice').addEventListener('click', () => {
-  listen({
-    button: $('search-voice'),
-    onResult: (alternatives) => {
-      $('search-input').value = alternatives[0];
-      runSearch(alternatives[0]);
-    },
-  });
+  if (voice.enabled && voice.mode === 'search') voice.stop();
+  else voice.start('search');
 });
 
 $('edit-plus').addEventListener('click', () => nudgeQty(1));

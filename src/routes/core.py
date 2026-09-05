@@ -99,6 +99,29 @@ def update_supplier(
 # ---------------------------------------------------------------- termékek
 
 
+def _strip_separators(column):
+    """Elválasztó karakterek eltávolítása SQL-ben.
+
+    A cikkszámokban kötőjel, pont, perjel és szóköz is előfordul
+    (pl. 'CVA-MPI', '12011/1'). A felhasználó ezeket ritkán gépeli be
+    pontosan, és a hangfelismerés sem adja vissza őket — ezért a
+    keresésnél mindkét oldalról levágjuk.
+
+    Nem regexp_replace-t használunk, mert az SQLite-on (teszt) nincs.
+    """
+    result = column
+    for char in ("-", ".", "/", " ", "_"):
+        result = func.replace(result, char, "")
+    return result
+
+
+def normalize_code(value: str) -> str:
+    """Ugyanaz a normalizálás Python oldalon."""
+    for char in ("-", ".", "/", " ", "_"):
+        value = value.replace(char, "")
+    return value
+
+
 @router.get("/products/search", response_model=list[ProductOut], tags=["termékek"])
 def search_products(
     q: str,
@@ -109,21 +132,24 @@ def search_products(
     """Kézi és hangos kereséshez.
 
     A hangfelismerés pontatlanságát a részszavas keresés tolerálja: elég
-    a név egy töredéke vagy a cikkszám vége.
+    a név egy töredéke vagy a cikkszám vége. A cikkszámnál az elválasztó
+    karakterek nem számítanak: 'cvampi' megtalálja a 'CVA-MPI'-t.
     """
     term = q.strip()
     if not term:
         return []
 
     pattern = f"%{term}%"
+    code_pattern = f"%{normalize_code(term)}%"
+
     stmt = (
         select(Product)
         .where(
             Product.inactive.is_(False),
             or_(
                 Product.name.ilike(pattern),
-                Product.sku.ilike(pattern),
-                Product.ean.ilike(pattern),
+                _strip_separators(Product.sku).ilike(code_pattern),
+                _strip_separators(Product.ean).ilike(code_pattern),
             ),
         )
         .order_by(func.length(Product.name))

@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from src.auth import current_user
@@ -28,12 +28,38 @@ from src.schemas.api import (
     ScanOut,
     UnknownScanOut,
 )
+from src.routes.core import _strip_separators, normalize_code
 from src.services.fifo import apply_scan
 from src.services.naturasoft_export import XLS_MEDIA_TYPE, export_receipt
 
 router = APIRouter(prefix="/api/receipts", tags=["bevételezés"])
 
 MSG_SET_ASIDE = "Tedd félre, fel kell venni a terméket!"
+
+
+def _find_product(db: Session, code: str) -> Product | None:
+    """Termék feloldása vonalkód vagy cikkszám alapján.
+
+    A vonalkódot pontosan hasonlítjuk (a szkenner mindig ugyanazt küldi),
+    a cikkszámnál viszont az elválasztó karakterek nem számítanak —
+    'CVAMPI' megtalálja a 'CVA-MPI'-t.
+    """
+    code = code.strip()
+    product = db.scalar(
+        select(Product).where(or_(Product.ean == code, Product.sku == code))
+    )
+    if product is not None:
+        return product
+
+    normalized = normalize_code(code)
+    if not normalized:
+        return None
+    # A cikkszámnál a kis- és nagybetű sem számít: 'cva-mpi' = 'CVA-MPI'
+    return db.scalar(
+        select(Product).where(
+            func.lower(_strip_separators(Product.sku)) == normalized.lower()
+        )
+    )
 
 
 def _item_out(item: ReceiptItem) -> ReceiptItemOut:
@@ -141,9 +167,7 @@ def scan(
         raise HTTPException(409, "Ezen a bevételezésen már dolgozik valaki.")
 
     code = payload.code.strip()
-    product = db.scalar(
-        select(Product).where(or_(Product.ean == code, Product.sku == code))
-    )
+    product = _find_product(db, code)
 
     if product is None:
         db.add(UnknownScan(receipt_id=receipt.id, raw_code=code))
@@ -189,10 +213,7 @@ def set_quantity(
     if receipt.locked_by not in (None, user.id):
         raise HTTPException(409, "Ezen a bevételezésen már dolgozik valaki.")
 
-    code = payload.code.strip()
-    product = db.scalar(
-        select(Product).where(or_(Product.ean == code, Product.sku == code))
-    )
+    product = _find_product(db, payload.code)
     if product is None:
         raise HTTPException(404, "Nincs ilyen termék.")
 
@@ -236,9 +257,7 @@ def remove_product(
     if receipt.locked_by not in (None, user.id):
         raise HTTPException(409, "Ezen a bevételezésen már dolgozik valaki.")
 
-    product = db.scalar(
-        select(Product).where(or_(Product.ean == code.strip(), Product.sku == code.strip()))
-    )
+    product = _find_product(db, code)
     if product is None:
         raise HTTPException(404, "Nincs ilyen termék.")
 
