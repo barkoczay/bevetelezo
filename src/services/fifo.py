@@ -114,6 +114,27 @@ def _already_allocated_in_receipt(
     return sum((Decimal(q) for q in db.scalars(stmt)), Decimal(0))
 
 
+def last_known_price(db: Session, product_id: int) -> Decimal | None:
+    """A termék legutóbbi ismert nettó beszerzési ára a megrendelésekből.
+
+    Rendelésen kívüli tételnél nincs honnan örökölni az árat, de a
+    raktárostól nem kérünk árat — ezért a legutóbbi rendelés árát
+    ajánljuk fel. Az admin ezt felülírhatja az export előtt.
+    """
+    stmt = (
+        select(PurchaseOrderItem.net_unit_price)
+        .join(PurchaseOrder)
+        .where(
+            PurchaseOrderItem.product_id == product_id,
+            PurchaseOrderItem.net_unit_price.is_not(None),
+        )
+        .order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc())
+        .limit(1)
+    )
+    value = db.scalar(stmt)
+    return Decimal(value) if value is not None else None
+
+
 def apply_scan(
     db: Session, receipt: Receipt, product: Product, qty: Decimal
 ) -> list[ReceiptItem]:
@@ -140,6 +161,12 @@ def apply_scan(
             created_or_updated.append(existing)
             continue
 
+        price = (
+            po_item.net_unit_price
+            if po_item is not None
+            else last_known_price(db, product.id)
+        )
+
         item = ReceiptItem(
             receipt_id=receipt.id,
             product_id=product.id,
@@ -150,7 +177,7 @@ def apply_scan(
                 else ReceiptItemSource.outside_order
             ),
             qty=alloc.qty,
-            net_unit_price=po_item.net_unit_price if po_item else None,
+            net_unit_price=price,
             sku_snapshot=product.sku,
             ean_snapshot=product.ean,
             name_snapshot=product.name,

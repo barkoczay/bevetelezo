@@ -239,6 +239,14 @@ tr.row-warn td { background: var(--warn-soft); }
 
 .back:hover { color: var(--steel-950); }
 
+.price-input { width: 104px; }
+
+/* Hiányzó ár: nulla forinttal menne az importba, ezért kiemeljük. */
+.price-input.is-missing {
+  border-color: var(--stop);
+  background: var(--stop-soft);
+}
+
 .qty-input {
   width: 78px;
   min-height: 30px;

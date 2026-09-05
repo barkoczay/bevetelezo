@@ -61,6 +61,13 @@ function qty(value) {
   return numberFormat.format(Number(value ?? 0));
 }
 
+/* Szerkesztéshez: a felesleges tizedesnullák nélkül (19444.0000 -> 19444) */
+function priceValue(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const number = Number(value);
+  return Number.isFinite(number) ? String(number) : '';
+}
+
 function money(value) {
   return value === null || value === undefined ? '—' : moneyFormat.format(Number(value));
 }
@@ -336,9 +343,16 @@ function renderReceiptDetail() {
     ? 'Excel letöltése és lezárás'
     : 'Már exportálva';
 
+  const missingPrice = r.items.filter(
+    (i) => i.net_unit_price === null || i.net_unit_price === undefined).length;
+
   if (!editable) {
     note('rd-note',
       'Ez a bevételezés exportálva lett, ezért nem módosítható. Ha javítani kell, azt a Naturasoftban tedd meg.',
+      'warn');
+  } else if (missingPrice) {
+    note('rd-note',
+      `${missingPrice} tételnél hiányzik a beszerzési ár. Ezek nulla forinttal kerülnének a Naturasoftba — írd be az árat az export előtt.`,
       'warn');
   } else if (r.missing_in_naturasoft_count) {
     note('rd-note',
@@ -381,7 +395,21 @@ function renderReceiptItems(editable) {
     }
     tr.appendChild(qtyCell);
 
-    tr.appendChild(element('td', 'num', money(item.net_unit_price)));
+    const priceCell = element('td', 'num');
+    if (editable) {
+      const input = element('input', 'qty-input price-input');
+      input.value = priceValue(item.net_unit_price);
+      input.placeholder = 'nincs ár';
+      // Ár nélküli tétel 0 forinttal menne a Naturasoftba — ezt jelezzük.
+      if (item.net_unit_price === null || item.net_unit_price === undefined) {
+        input.classList.add('is-missing');
+      }
+      input.addEventListener('change', () => saveItemPrice(item, input));
+      priceCell.appendChild(input);
+    } else {
+      priceCell.textContent = money(item.net_unit_price);
+    }
+    tr.appendChild(priceCell);
 
     const actions = element('td');
     if (editable) {
@@ -429,6 +457,28 @@ async function saveItemQty(item, input) {
     await api(`/receipts/${state.receipt.id}/items/${item.id}`, {
       method: 'PATCH',
       body: { qty: value },
+    });
+    await openReceipt(state.receipt.id);
+  } catch (err) { note('rd-note', err.message); }
+}
+
+async function saveItemPrice(item, input) {
+  const raw = input.value.trim().replace(/\s/g, '').replace(',', '.');
+  if (!raw) {
+    note('rd-note', 'Az ár nem lehet üres — ilyenkor 0 forinttal kerülne a Naturasoftba.');
+    input.value = priceValue(item.net_unit_price);
+    return;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    input.value = priceValue(item.net_unit_price);
+    note('rd-note', 'Az árnak számnak kell lennie.');
+    return;
+  }
+  try {
+    await api(`/receipts/${state.receipt.id}/items/${item.id}`, {
+      method: 'PATCH',
+      body: { net_unit_price: value },
     });
     await openReceipt(state.receipt.id);
   } catch (err) { note('rd-note', err.message); }
