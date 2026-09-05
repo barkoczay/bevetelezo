@@ -54,6 +54,7 @@
     <div class="bar">
       <span class="bar__title" id="scan-supplier">—</span>
       <span class="bar__meta" id="scan-count">0</span>
+      <button class="bar__btn" id="search-btn">Keresés</button>
     </div>
 
     <div class="feedback" id="feedback">
@@ -68,8 +69,7 @@
     <div class="list" id="item-list"></div>
 
     <div class="actions">
-      <button class="btn" id="voice-btn">Mennyiség</button>
-      <button class="btn" id="search-btn">Keresés</button>
+      <button class="btn" id="voice-btn" aria-pressed="false">Hang</button>
       <button class="btn btn--primary" id="finish-btn">Kész</button>
     </div>
     <input class="scan-catcher" id="scan-catcher" inputmode="none" aria-hidden="true" tabindex="-1">
@@ -99,13 +99,11 @@
   <section id="screen-search" class="screen">
     <div class="bar">
       <button class="bar__btn" id="search-back">Vissza</button>
-      <span class="bar__title">Termék keresése</span>
+      <span class="bar__title">Keresés</span>
+      <button class="bar__btn" id="search-voice">Hang</button>
     </div>
     <div class="search">
       <input id="search-input" placeholder="Név vagy cikkszám" autocapitalize="none">
-    </div>
-    <div class="actions" style="border-top:none;border-bottom:1px solid var(--steel-200)">
-      <button class="btn" id="search-voice">Mondd a nevét</button>
     </div>
     <div class="list" id="search-results"></div>
   </section>
