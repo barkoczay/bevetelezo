@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.config import get_settings
 from fastapi.responses import RedirectResponse
@@ -32,9 +35,16 @@ app.include_router(setup.router)
 
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    return RedirectResponse("/docs")
+    return RedirectResponse("/app/")
 
 
 @app.get("/health", tags=["rendszer"])
 def health() -> dict:
     return {"status": "ok"}
+
+
+# A raktáros PWA-t ugyanez a szolgáltatás szolgálja ki. Így nincs külön
+# deploy, és nincs CORS kérdés sem: azonos origin.
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+if _STATIC_DIR.is_dir():
+    app.mount("/app", StaticFiles(directory=_STATIC_DIR, html=True), name="app")

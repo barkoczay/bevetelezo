@@ -173,6 +173,93 @@ def scan(
     )
 
 
+@router.post("/{receipt_id}/set-quantity", response_model=ScanOut)
+def set_quantity(
+    receipt_id: int,
+    payload: ScanIn,
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+):
+    """A termék PONTOS mennyiségének beállítása ebben a bevételezésben.
+
+    A FIFO miatt egy termék több rendeléstételre is eshet, ezért a meglévő
+    sorokat eldobjuk és újraallokálunk. Így a csökkentés is helyes marad.
+    """
+    receipt = _get_editable(db, receipt_id)
+    if receipt.locked_by not in (None, user.id):
+        raise HTTPException(409, "Ezen a bevételezésen már dolgozik valaki.")
+
+    code = payload.code.strip()
+    product = db.scalar(
+        select(Product).where(or_(Product.ean == code, Product.sku == code))
+    )
+    if product is None:
+        raise HTTPException(404, "Nincs ilyen termék.")
+
+    qty = Decimal(payload.qty)
+    if qty < 0:
+        raise HTTPException(400, "A mennyiség nem lehet negatív.")
+
+    for item in list(receipt.items):
+        if item.product_id == product.id:
+            db.delete(item)
+    db.flush()
+
+    items = []
+    if qty > 0:
+        items = apply_scan(db, receipt, product, qty)
+    db.commit()
+    db.refresh(receipt)
+
+    return ScanOut(
+        status="ok",
+        product_name=product.name,
+        unit=product.unit,
+        total_qty=qty,
+        item_ids=[i.id for i in items],
+    )
+
+
+@router.delete("/{receipt_id}/products/{code}", response_model=ScanOut)
+def remove_product(
+    receipt_id: int,
+    code: str,
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+):
+    """Téves beolvasás visszavonása: a termék összes sora törlődik.
+
+    Mivel a rendelés maradéka csak exportkor csökken, a visszavont
+    mennyiség automatikusan elérhető marad a következő bevételezéshez.
+    """
+    receipt = _get_editable(db, receipt_id)
+    if receipt.locked_by not in (None, user.id):
+        raise HTTPException(409, "Ezen a bevételezésen már dolgozik valaki.")
+
+    product = db.scalar(
+        select(Product).where(or_(Product.ean == code.strip(), Product.sku == code.strip()))
+    )
+    if product is None:
+        raise HTTPException(404, "Nincs ilyen termék.")
+
+    removed = 0
+    for item in list(receipt.items):
+        if item.product_id == product.id:
+            db.delete(item)
+            removed += 1
+    db.commit()
+
+    if not removed:
+        raise HTTPException(404, "Ez a termék nincs a bevételezésben.")
+
+    return ScanOut(
+        status="ok",
+        product_name=product.name,
+        unit=product.unit,
+        total_qty=Decimal(0),
+    )
+
+
 @router.post("/{receipt_id}/finish", response_model=ReceiptDetailOut)
 def finish_scanning(
     receipt_id: int,

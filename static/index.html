@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10151a">
+<title>Bevételezés</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ---------------------------------------------------- bejelentkezés -->
+  <section id="screen-login" class="screen is-active">
+    <div class="bar"><span class="bar__title">Bevételezés</span></div>
+    <div class="form">
+      <h1>Bejelentkezés</h1>
+      <div class="field">
+        <label for="login-user">Felhasználónév</label>
+        <input id="login-user" autocomplete="username" autocapitalize="none">
+      </div>
+      <div class="field">
+        <label for="login-pass">Jelszó</label>
+        <input id="login-pass" type="password" autocomplete="current-password">
+      </div>
+      <div class="error" id="login-error"></div>
+      <button class="btn btn--primary" id="login-btn">Belépés</button>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------- indítás -->
+  <section id="screen-start" class="screen">
+    <div class="bar">
+      <span class="bar__title">Új bevételezés</span>
+      <button class="bar__btn" id="logout-btn">Kilép</button>
+    </div>
+    <div class="form">
+      <h1>Melyik szállítótól?</h1>
+      <div class="field">
+        <label for="supplier">Szállító</label>
+        <select id="supplier"></select>
+      </div>
+      <div class="error" id="start-error"></div>
+      <button class="btn btn--primary" id="start-btn">Kezdés</button>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------- szkennelés -->
+  <section id="screen-scan" class="screen">
+    <div class="bar">
+      <span class="bar__title" id="scan-supplier">—</span>
+      <span class="bar__meta" id="scan-count">0</span>
+    </div>
+
+    <div class="feedback" id="feedback">
+      <p class="feedback__name" id="fb-name">Olvasd be az első terméket</p>
+      <div class="feedback__row" id="fb-row" hidden>
+        <span class="feedback__qty" id="fb-qty">0</span>
+        <span class="feedback__unit" id="fb-unit">db</span>
+      </div>
+      <p class="feedback__hint" id="fb-hint">A szkenner készen áll.</p>
+    </div>
+
+    <div class="list" id="item-list"></div>
+
+    <div class="actions">
+      <button class="btn" id="voice-btn">Mennyiség</button>
+      <button class="btn" id="search-btn">Keresés</button>
+      <button class="btn btn--primary" id="finish-btn">Kész</button>
+    </div>
+    <input class="scan-catcher" id="scan-catcher" inputmode="none" aria-hidden="true" tabindex="-1">
+  </section>
+
+  <!-- ------------------------------------------------------ tétel javítás -->
+  <div class="sheet" id="edit-sheet" hidden>
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="edit-name">
+      <p class="sheet__name" id="edit-name"></p>
+
+      <div class="stepper">
+        <button class="stepper__btn" id="edit-minus" aria-label="Kevesebb">−</button>
+        <input class="stepper__value" id="edit-qty" inputmode="numeric" value="1">
+        <button class="stepper__btn" id="edit-plus" aria-label="Több">+</button>
+      </div>
+
+      <div class="actions" style="border-top:none;padding:0">
+        <button class="btn" id="edit-cancel">Mégsem</button>
+        <button class="btn btn--primary" id="edit-save">Mentés</button>
+      </div>
+      <button class="btn btn--danger" id="edit-remove">Tétel visszavonása</button>
+    </div>
+  </div>
+
+
+  <!-- ---------------------------------------------------------- keresés -->
+  <section id="screen-search" class="screen">
+    <div class="bar">
+      <button class="bar__btn" id="search-back">Vissza</button>
+      <span class="bar__title">Termék keresése</span>
+    </div>
+    <div class="search">
+      <input id="search-input" placeholder="Név vagy cikkszám" autocapitalize="none">
+    </div>
+    <div class="actions" style="border-top:none;border-bottom:1px solid var(--steel-200)">
+      <button class="btn" id="search-voice">Mondd a nevét</button>
+    </div>
+    <div class="list" id="search-results"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------- vége -->
+  <section id="screen-done" class="screen">
+    <div class="bar"><span class="bar__title">Kész</span></div>
+    <div class="form">
+      <h1 id="done-title">Bevételezés lezárva</h1>
+      <p id="done-summary" style="color:var(--steel-500);margin:0"></p>
+      <button class="btn btn--primary" id="done-btn">Új bevételezés</button>
+    </div>
+  </section>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

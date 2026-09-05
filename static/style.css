@@ -1,0 +1,401 @@
+/* ------------------------------------------------------------------
+   Raktári bevételező — üzemi kijelző
+   Karnyújtásnyiról olvasható, egy kézzel kezelhető.
+   ------------------------------------------------------------------ */
+
+:root {
+  --steel-950: #10151a;   /* fejléc, sötét felületek */
+  --steel-800: #253039;
+  --steel-500: #5d6b76;   /* másodlagos szöveg */
+  --steel-200: #ccd4da;   /* elválasztók */
+  --steel-100: #e3e8eb;
+  --paper:     #f2f4f6;   /* háttér */
+  --white:     #ffffff;
+
+  --ok:        #1f7a3f;
+  --ok-soft:   #e2f2e7;
+  --warn:      #a86500;
+  --warn-soft: #fdf0da;
+  --stop:      #a32020;
+  --stop-soft: #fbe6e6;
+
+  --tap: 56px;            /* minimális érintési célpont */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--paper);
+  color: var(--steel-950);
+  font-family: Barlow, system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+}
+
+button, input, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--steel-950);
+  outline-offset: 2px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--paper);
+}
+
+.screen { display: none; flex-direction: column; flex: 1; min-height: 0; }
+.screen.is-active { display: flex; }
+
+/* --- fejléc ------------------------------------------------------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--steel-950);
+  color: var(--white);
+}
+
+.bar__title {
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.01em;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar__meta {
+  font-family: 'Barlow Condensed', Barlow, sans-serif;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--steel-200);
+}
+
+.bar__btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: var(--white);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.bar__btn:active { background: rgba(255, 255, 255, 0.15); }
+
+/* --- visszajelző mező (a képernyő hőse) --------------------------- */
+
+.feedback {
+  background: var(--white);
+  border-bottom: 1px solid var(--steel-200);
+  padding: 20px 16px 18px;
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: background-color 120ms linear;
+}
+
+.feedback[data-state='ok']      { background: var(--ok-soft); }
+.feedback[data-state='warn']    { background: var(--warn-soft); }
+.feedback[data-state='stop']    { background: var(--stop-soft); }
+
+.feedback__name {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0 0 10px;
+  /* legfeljebb 3 sor, hosszú terméknevekhez */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.feedback__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* A szerzői display:flex erősebb, mint a böngésző [hidden] szabálya,
+   ezért kell külön kimondani. Enélkül a régi darabszám ott ragadna a
+   képernyőn egy „Tedd félre” üzenet alatt. */
+.feedback__row[hidden] { display: none; }
+
+.feedback__qty {
+  font-family: 'Barlow Condensed', Barlow, sans-serif;
+  font-size: 72px;
+  font-weight: 600;
+  line-height: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.feedback__unit { font-size: 22px; color: var(--steel-500); }
+
+.feedback__hint {
+  color: var(--steel-500);
+  font-size: 16px;
+}
+
+.feedback[data-state='stop'] .feedback__name { color: var(--stop); }
+.feedback[data-state='warn'] .feedback__name { color: var(--warn); }
+
+/* --- tétellista --------------------------------------------------- */
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 1px solid var(--steel-100);
+  background: var(--paper);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.row--fresh { background: var(--white); }
+
+.row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__qty {
+  font-family: 'Barlow Condensed', Barlow, sans-serif;
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.row__unit { color: var(--steel-500); font-size: 15px; }
+
+.empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--steel-500);
+}
+
+/* --- alsó műveletsáv ---------------------------------------------- */
+
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: var(--white);
+  border-top: 1px solid var(--steel-200);
+}
+
+.btn {
+  flex: 1;
+  min-height: var(--tap);
+  border: 1px solid var(--steel-800);
+  border-radius: 6px;
+  background: var(--white);
+  font-size: 17px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn:active { background: var(--steel-100); }
+.btn[disabled] { opacity: 0.45; cursor: default; }
+
+.btn--primary {
+  background: var(--steel-950);
+  border-color: var(--steel-950);
+  color: var(--white);
+}
+
+.btn--primary:active { background: var(--steel-800); }
+
+.btn--listening {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--white);
+}
+
+/* --- űrlapok ------------------------------------------------------ */
+
+.form {
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.form h1 {
+  font-size: 30px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+
+.field label { font-size: 15px; color: var(--steel-500); }
+
+.field input,
+.field select {
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1px solid var(--steel-200);
+  border-radius: 6px;
+  background: var(--white);
+}
+
+.error {
+  color: var(--stop);
+  background: var(--stop-soft);
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+
+.error:empty { display: none; }
+
+/* --- keresés ------------------------------------------------------ */
+
+.search { padding: 12px 16px; background: var(--white); border-bottom: 1px solid var(--steel-200); }
+
+.search input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1px solid var(--steel-200);
+  border-radius: 6px;
+}
+
+.result {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 1px solid var(--steel-100);
+  background: var(--white);
+  cursor: pointer;
+}
+
+.result:active { background: var(--steel-100); }
+.result__sku { color: var(--steel-500); font-size: 15px; }
+
+/* A szkenner rejtett bemenete: a fókusz miatt a DOM-ban kell lennie. */
+/* --- tétel javító lap --------------------------------------------- */
+
+/* Alulról nyílik, hogy hüvelykujjal elérhető legyen. */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(16, 21, 26, 0.5);
+}
+
+.sheet[hidden] { display: none; }
+
+.sheet__panel {
+  width: 100%;
+  max-width: 720px;
+  background: var(--white);
+  border-radius: 12px 12px 0 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sheet__name {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.stepper__btn {
+  flex: 0 0 68px;
+  border: 1px solid var(--steel-800);
+  border-radius: 6px;
+  background: var(--white);
+  font-size: 34px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stepper__btn:active { background: var(--steel-100); }
+
+.stepper__value {
+  flex: 1;
+  /* Flexben az input alapértelmezett szélessége nem enged összehúzódni,
+     ezért kinyomná a '+' gombot a képernyőről. */
+  min-width: 0;
+  width: 100%;
+  min-height: 76px;
+  text-align: center;
+  border: 1px solid var(--steel-200);
+  border-radius: 6px;
+  font-family: 'Barlow Condensed', Barlow, sans-serif;
+  font-size: 48px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn--danger {
+  border-color: var(--stop);
+  color: var(--stop);
+  background: var(--white);
+}
+
+.btn--danger:active { background: var(--stop-soft); }
+
+/* A sor koppintható: onnan javítható a mennyiség és vonható vissza. */
+.row:active { background: var(--steel-100); }
+.row__chevron { color: var(--steel-500); font-size: 20px; }
+
+.scan-catcher {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
