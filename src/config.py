@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_hours: int = 12
 
+    # Egyszeri inicializáláshoz. Ha üres, a /api/setup végpontok nem
+    # működnek. Az init után nyugodtan törölhető.
+    setup_token: str = ""
+
     # Naturasoft export alapértelmezései
     default_warehouse: str = "Szüret utca"
 

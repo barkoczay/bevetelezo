@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
-from src.routes import core, orders, receipts
+from fastapi.responses import RedirectResponse
+
+from src.routes import core, orders, receipts, setup
 
 settings = get_settings()
 
@@ -25,6 +27,12 @@ app.add_middleware(
 app.include_router(core.router)
 app.include_router(orders.router)
 app.include_router(receipts.router)
+app.include_router(setup.router)
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse("/docs")
 
 
 @app.get("/health", tags=["rendszer"])
