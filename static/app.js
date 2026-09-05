@@ -19,6 +19,11 @@ const state = {
   items: [],          // { productId, name, unit, qty }
   lastProductCode: null,
   lastProductId: null,
+  /* A hangvezérlés két lépésben halad:
+       'product'  — terméket keresünk (a keresőszó tartalmazhat számot)
+       'quantity' — megvan a termék, a darabszámot várjuk
+     Így nem kell találgatni, hogy a '250' mennyiség-e vagy típusszám. */
+  step: 'product',
 };
 
 /* --- API ---------------------------------------------------------------- */
@@ -142,6 +147,7 @@ async function startReceipt() {
     state.items = [];
     state.lastProductCode = null;
     state.lastProductId = null;
+    state.step = 'product';
 
     $('scan-supplier').textContent = state.supplierName;
     renderItems();
@@ -243,7 +249,9 @@ async function sendScan(code, qty = 1) {
     }
 
     state.lastProductCode = code;
-    setFeedback('ok', res.product_name, res.total_qty, 'Mondd a darabszámot, vagy olvasd a következőt.', res.unit);
+    state.step = 'quantity';          // megvan a termék, jöhet a darabszám
+    setFeedback('ok', res.product_name, res.total_qty,
+      'Mondd a darabszámot, vagy olvasd a következőt.', res.unit);
     beep('ok');
     say('Oké');
 
@@ -265,8 +273,9 @@ async function setQuantity(code, target) {
       body: { code, qty: target },
     });
     state.lastProductCode = code;
+    state.step = 'product';           // kész a darabszám, jöhet a következő termék
     setFeedback('ok', res.product_name, res.total_qty,
-      'Mondd a darabszámot, vagy olvasd a következőt.', res.unit);
+      'Jöhet a következő termék.', res.unit);
     beep('ok');
     say(`Beírva ${formatQty(res.total_qty)}`);
     upsertItem(code, res.product_name, res.unit, res.total_qty);
@@ -279,8 +288,9 @@ async function setQuantity(code, target) {
 /* Mennyiség bemondása a legutóbb beolvasott termékhez. */
 async function setQuantityForLast(target) {
   if (!state.lastProductCode) {
-    setFeedback('warn', 'Előbb olvass be egy terméket', null,
-      'A darabszám az utolsó tételre vonatkozik.');
+    setFeedback('warn', 'Előbb válassz terméket', null,
+      'A darabszám mindig az utoljára rögzített tételre vonatkozik.');
+    say('Előbb válassz terméket');
     return;
   }
   await setQuantity(state.lastProductCode, target);
@@ -332,6 +342,7 @@ async function removeProduct(code) {
     });
     state.items = state.items.filter((i) => i.productId !== code);
     if (state.lastProductCode === code) state.lastProductCode = null;
+    state.step = 'product';
     renderItems();
     setFeedback('idle', 'Tétel visszavonva', null, res.product_name);
     say('Visszavonva');
@@ -420,6 +431,8 @@ if (synth) {
   synth.addEventListener?.('voiceschanged', pickVoice);
 }
 
+let speakWatchdog = null;
+
 function say(text) {
   if (!synth || !text) return;
   try {
@@ -430,12 +443,29 @@ function say(text) {
     utterance.lang = 'hu-HU';
     if (huVoice) utterance.voice = huVoice;
     utterance.rate = 1.15;          // gyors, de érthető
-    utterance.onend = () => voice.unmute();
-    utterance.onerror = () => voice.unmute();
+    utterance.onend = () => finishSpeaking();
+    utterance.onerror = () => finishSpeaking();
     synth.speak(utterance);
+
+    /* Androidon az onend néha egyszerűen nem jön meg — ilyenkor a
+       mikrofon némán maradna, és a raktáros hiába mondaná a darabszámot.
+       Ezért figyeljük, mikor hallgat el ténylegesen, és van egy felső
+       időkorlát is. */
+    clearInterval(speakWatchdog);
+    const startedAt = Date.now();
+    const maxWait = 1500 + text.length * 90;
+    speakWatchdog = setInterval(() => {
+      if (!synth.speaking || Date.now() - startedAt > maxWait) finishSpeaking();
+    }, 250);
   } catch (_) {
-    voice.unmute();
+    finishSpeaking();
   }
+}
+
+function finishSpeaking() {
+  clearInterval(speakWatchdog);
+  speakWatchdog = null;
+  voice.unmute();
 }
 
 /* --- hang --------------------------------------------------------------- 
@@ -462,30 +492,59 @@ const TENS_PREFIX = {
   hatvan: 60, hetven: 70, nyolcvan: 80, kilencven: 90,
 };
 
+/* Számfelismerés SZIGORÚAN: csak akkor szám, ha a TELJES elhangzott
+   mondat az. Enélkül a „kcf 250” mennyiségnek számítana, holott
+   terméknév — pont ez keverte össze korábban a két üzemmódot.
+
+   A „darab” utótag megengedett: „öt darab”, „12 db”. */
 function parseHungarianNumber(text) {
-  const clean = text.toLowerCase().trim().replace(/[.,!?]/g, '');
+  let clean = text.toLowerCase().trim().replace(/[.,!?]/g, '');
 
-  const digits = clean.match(/\d+/);
-  if (digits) return Number(digits[0]);
+  // a mértékegység elhagyható: 'öt darab' -> 'öt'
+  clean = clean.replace(/\s*(darab|darabot|db)$/, '').trim();
+  if (!clean) return null;
 
-  if (NUMBER_WORDS[clean] !== undefined) return NUMBER_WORDS[clean];
+  // csak számjegyek: '25'
+  if (/^\d+$/.test(clean)) return Number(clean);
 
-  // összetett alak egy szóban: "huszonöt", "harminckettő"
+  // egyetlen számnév: 'öt', 'huszonöt'
+  const single = wordToNumber(clean);
+  if (single !== null) return single;
+
+  // külön ejtett alak: 'harminc kettő'
+  const parts = clean.split(/\s+/);
+  let total = 0;
+  for (const part of parts) {
+    const value = wordToNumber(part);
+    if (value === null) return null;   // egyetlen nem-szám szó -> nem mennyiség
+    total += value;
+  }
+  return parts.length ? total : null;
+}
+
+function wordToNumber(word) {
+  if (/^\d+$/.test(word)) return Number(word);
+  if (NUMBER_WORDS[word] !== undefined) return NUMBER_WORDS[word];
+
+  // százas alakok: 'százhúsz', 'kétszázötven'
+  const hundreds = word.match(/^(két|ket|három|harom|négy|negy|öt|ot|hat|hét|het|nyolc|kilenc)?(száz|szaz)(.*)$/);
+  if (hundreds) {
+    const multiplier = hundreds[1] ? NUMBER_WORDS[hundreds[1]] : 1;
+    const rest = hundreds[3];
+    if (!rest) return multiplier * 100;
+    const tail = wordToNumber(rest);
+    if (tail !== null) return multiplier * 100 + tail;
+    return null;
+  }
+
+  // összetett alak egy szóban: 'huszonöt', 'harminckettő'
   for (const [prefix, base] of Object.entries(TENS_PREFIX)) {
-    if (clean.startsWith(prefix) && clean.length > prefix.length) {
-      const rest = clean.slice(prefix.length);
+    if (word.startsWith(prefix) && word.length > prefix.length) {
+      const rest = word.slice(prefix.length);
       if (NUMBER_WORDS[rest] !== undefined) return base + NUMBER_WORDS[rest];
     }
   }
-
-  // külön ejtett alak: "harminc kettő"
-  const parts = clean.split(/\s+/);
-  let total = 0;
-  let matched = false;
-  for (const part of parts) {
-    if (NUMBER_WORDS[part] !== undefined) { total += NUMBER_WORDS[part]; matched = true; }
-  }
-  return matched ? total : null;
+  return null;
 }
 
 const ORDINALS = {
@@ -507,8 +566,10 @@ const voice = {
   recognition: null,
   enabled: false,
   muted: false,       // amíg az app beszél
+  running: false,     // fut-e ténylegesen a felismerés
   mode: 'scan',       // 'scan' vagy 'search'
   restarting: false,
+  keepAlive: null,
 
   supported() { return Boolean(SpeechRecognition); },
 
@@ -520,11 +581,14 @@ const voice = {
     }
     this.mode = mode;
     this.enabled = true;
+    this.muted = false;
     this.launch();
+    this.startKeepAlive();
     updateVoiceButtons();
     if (mode === 'scan') {
-      $('fb-hint').textContent =
-        'Hallgatlak. Mondd a darabszámot, a termék nevét, vagy hogy „vissza”.';
+      $('fb-hint').textContent = state.step === 'quantity'
+        ? 'Mondd a darabszámot.'
+        : 'Mondd a termék nevét, vagy olvasd be a vonalkódot.';
     }
   },
 
@@ -533,34 +597,51 @@ const voice = {
       $('fb-hint').textContent = 'A szkenner készen áll.';
     }
     this.enabled = false;
+    this.running = false;
+    clearInterval(this.keepAlive);
+    this.keepAlive = null;
     if (this.recognition) {
       try { this.recognition.abort(); } catch (_) { /* már leállt */ }
     }
     updateVoiceButtons();
   },
 
+  /* Őrjárat: ha a felismerés bármi miatt leállt (a böngésző elengedte,
+     a beszéd után nem indult vissza, hálózati hiba), magától újraindul.
+     Enélkül a mikrofon csendben kikapcsolna, és a raktáros hiába
+     beszélne tovább. */
+  startKeepAlive() {
+    clearInterval(this.keepAlive);
+    this.keepAlive = setInterval(() => {
+      if (this.enabled && !this.muted && !this.running) this.launch();
+    }, 1200);
+  },
+
   /* Beszéd alatt leállítjuk a felismerést, utána visszakapcsoljuk. */
   mute() {
     if (!this.enabled) return;
     this.muted = true;
+    this.running = false;
     if (this.recognition) {
       try { this.recognition.abort(); } catch (_) { /* már leállt */ }
     }
   },
 
   unmute() {
-    if (!this.enabled) { this.muted = false; return; }
     this.muted = false;
-    setTimeout(() => { if (this.enabled && !this.muted) this.launch(); }, 150);
+    if (!this.enabled) return;
+    setTimeout(() => { if (this.enabled && !this.muted) this.launch(); }, 200);
   },
 
   launch() {
-    if (this.muted) return;
+    if (this.muted || this.running) return;
     const recognition = new SpeechRecognition();
     recognition.lang = 'hu-HU';
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.maxAlternatives = 3;
+
+    recognition.onstart = () => { this.running = true; };
 
     recognition.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -574,6 +655,7 @@ const voice = {
     };
 
     recognition.onerror = (event) => {
+      this.running = false;
       // 'no-speech' és 'aborted' természetes szünet — az onend újraindítja
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         this.enabled = false;
@@ -584,21 +666,28 @@ const voice = {
     };
 
     recognition.onend = () => {
+      this.running = false;
       // A Chrome hosszabb csend után magától leáll — újraindítjuk.
+      // (Ha nem sikerül, az őrjárat úgyis megpróbálja.)
       if (!this.enabled || this.restarting || this.muted) return;
       this.restarting = true;
       setTimeout(() => {
         this.restarting = false;
-        if (this.enabled) {
-          try { this.launch(); } catch (_) { this.enabled = false; updateVoiceButtons(); }
-        }
+        this.launch();
       }, 250);
     };
 
     this.recognition = recognition;
+    // Optimista jelzés: az onstart késhet, és addig az őrjárat egy
+    // második példányt indítana ugyanarra a mikrofonra.
+    this.running = true;
     try {
       recognition.start();
-    } catch (_) { /* már fut */ }
+    } catch (_) {
+      // 'InvalidStateError': az előző példány még nem állt le teljesen.
+      // Nem baj — az őrjárat rövidesen újrapróbálja.
+      this.running = false;
+    }
   },
 
   handle(alternatives) {
@@ -630,26 +719,31 @@ const voice = {
 
     if (!$('screen-scan').classList.contains('is-active')) return;
 
-    for (const text of alternatives) {
-      const clean = text.toLowerCase().trim();
-
-      if (/^(töröl|torol|vissza|visszavon|visszavonás|visszavonas)$/.test(clean)) {
-        if (state.lastProductCode) removeProduct(state.lastProductCode);
-        else say('Nincs mit visszavonni');
-        return;
-      }
-
-      const value = parseHungarianNumber(text);
-      if (value !== null && value > 0 && value < 10000) {
-        setQuantityForLast(value);
-        return;
-      }
+    // Visszavonás bármelyik lépésben működik.
+    const first = alternatives[0].toLowerCase().trim().replace(/[.,!?]/g, '');
+    if (/^(töröl|torol|vissza|visszavon|visszavonás|visszavonas)$/.test(first)) {
+      if (state.lastProductCode) removeProduct(state.lastProductCode);
+      else say('Nincs mit visszavonni');
+      return;
     }
 
-    // Nem szám és nem parancs: terméknévnek vesszük és keresünk.
-    // (Külön keresés gomb nem kell — ugyanaz a mikrofon szolgálja ki.)
+    if (state.step === 'quantity') {
+      for (const text of alternatives) {
+        const value = parseHungarianNumber(text);
+        if (value !== null && value > 0 && value < 10000) {
+          setQuantityForLast(value);
+          return;
+        }
+      }
+      // Nem szám: a raktáros továbblépett a következő termékre, a
+      // mostani marad 1 darab. Keresésként értelmezzük.
+      state.step = 'product';
+    }
+
+    // Termékkeresés. A keresőszó tartalmazhat számot ('kcf 250') — itt
+    // nem kell szétválasztani, mert most nem mennyiséget várunk.
     const term = alternatives[0].trim();
-    if (term.length >= 3) voiceSearch(term);
+    if (term.length >= 2) voiceSearch(term);
   },
 };
 
@@ -661,8 +755,10 @@ async function voiceSearch(term) {
     const results = await api(`/products/search?q=${encodeURIComponent(term)}&limit=25`);
 
     if (!results.length) {
-      setFeedback('warn', 'Nincs találat', null, `Ezt hallottam: „${term}”`);
-      say('Nincs találat');
+      state.step = 'product';
+      setFeedback('warn', 'Nincs találat', null,
+        `Ezt hallottam: „${term}”. Mondd újra, vagy máshogy.`);
+      say('Nincs találat, mondd újra');
       return;
     }
 
