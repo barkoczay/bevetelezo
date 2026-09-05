@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.config import get_settings
 from src.routes import core, orders, receipts
+
+settings = get_settings()
 
 app = FastAPI(
     title="Raktári bevételező",
@@ -9,13 +12,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# A PWA külön origin-ről érkezik (Railway static / saját domain)
+# A PWA külön origin-ről érkezik. Bearer tokennel dolgozunk, ezért
+# allow_credentials nem kell — sütit nem használunk.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(core.router)

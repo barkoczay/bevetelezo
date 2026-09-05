@@ -6,6 +6,8 @@ azonosítás célja a naplózás (ki csinálta) és a bevételezés zárolása.
 
 from __future__ import annotations
 
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -25,6 +27,32 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 # A bcrypt legfeljebb 72 bájtot dolgoz fel; a hosszabb jelszót levágjuk,
 # hogy ne dobjon hibát.
 _MAX_PASSWORD_BYTES = 72
+
+# Egyszerű brute force védelem. 4-5 felhasználós rendszernél a memóriában
+# tartott számláló elég — nem kell külön Redis.
+_MAX_ATTEMPTS = 8
+_LOCKOUT_SECONDS = 300
+_failed_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def check_rate_limit(username: str) -> None:
+    """Túl sok sikertelen próbálkozás után átmenetileg tiltunk."""
+    now = time.time()
+    attempts = [t for t in _failed_attempts[username] if now - t < _LOCKOUT_SECONDS]
+    _failed_attempts[username] = attempts
+    if len(attempts) >= _MAX_ATTEMPTS:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Túl sok sikertelen bejelentkezés. Próbáld újra néhány perc múlva.",
+        )
+
+
+def record_failure(username: str) -> None:
+    _failed_attempts[username].append(time.time())
+
+
+def clear_failures(username: str) -> None:
+    _failed_attempts.pop(username, None)
 
 
 def _encode(password: str) -> bytes:

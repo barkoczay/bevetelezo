@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     # Naturasoft export alapértelmezései
     default_warehouse: str = "Szüret utca"
 
+    # A PWA origin(ek), vesszővel elválasztva. Fejlesztéskor '*' is lehet,
+    # élesben a saját domaint add meg.
+    cors_origins: str = "*"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     @property
     def sqlalchemy_url(self) -> str:
         url = self.database_url

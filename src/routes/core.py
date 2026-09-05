@@ -5,7 +5,14 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from src.auth import authenticate, create_token, current_user
+from src.auth import (
+    authenticate,
+    check_rate_limit,
+    clear_failures,
+    create_token,
+    current_user,
+    record_failure,
+)
 from src.db.models import AppUser, Product, Supplier
 from src.db.session import get_db
 from src.schemas.api import (
@@ -27,9 +34,12 @@ router = APIRouter(prefix="/api")
 def login(
     form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ) -> TokenOut:
+    check_rate_limit(form.username)
     user = authenticate(db, form.username, form.password)
     if user is None:
+        record_failure(form.username)
         raise HTTPException(401, "Hibás felhasználónév vagy jelszó.")
+    clear_failures(form.username)
     return TokenOut(access_token=create_token(user), display_name=user.display_name)
 
 
