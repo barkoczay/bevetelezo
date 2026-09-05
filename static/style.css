@@ -312,6 +312,17 @@ button, input, select {
 
 /* --- félbehagyott bevételezés folytatása -------------------------- */
 
+/* Az új beolvasás az elsődleges művelet, ez másodlagos: elválasztjuk,
+   de nem rejtjük el. */
+.resume__title {
+  margin: 26px 0 10px;
+  padding-top: 20px;
+  border-top: 1px solid var(--steel-200);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--steel-500);
+}
+
 .resume {
   display: flex;
   align-items: center;

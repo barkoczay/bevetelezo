@@ -19,11 +19,14 @@ from src.db.models import (
 )
 from src.db.session import get_db
 from src.schemas.api import (
+    BulkDeleteIn,
+    BulkDeleteOut,
     OrderDetailOut,
     OrderItemOut,
     OrderOut,
     OrderPreviewOut,
     OrderUpdateIn,
+    SkippedOut,
 )
 from src.services.order_import import extract_order_number, import_order, parse_order_file
 
@@ -245,6 +248,46 @@ def reopen_order(
     db.commit()
     db.refresh(order)
     return _to_order_out(order, db, with_items=True)
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteOut)
+def bulk_delete_orders(
+    payload: BulkDeleteIn,
+    db: Session = Depends(get_db),
+    _: AppUser = Depends(current_user),
+):
+    """Több megrendelés törlése egyszerre.
+
+    Amelyikhez már tartozik bevételezés, azt kihagyjuk — a törlés
+    elszakítaná a bevételezett tételeket a rendeléstől.
+    """
+    deleted = 0
+    skipped: list[SkippedOut] = []
+
+    for order_id in payload.ids:
+        order = db.get(PurchaseOrder, order_id)
+        if order is None:
+            skipped.append(
+                SkippedOut(id=order_id, label=f"#{order_id}", reason="nem található"))
+            continue
+
+        linked = db.scalar(
+            select(ReceiptItem.id)
+            .join(PurchaseOrderItem)
+            .where(PurchaseOrderItem.purchase_order_id == order_id)
+            .limit(1)
+        )
+        if linked is not None:
+            skipped.append(SkippedOut(
+                id=order_id, label=order.order_number,
+                reason="már tartozik hozzá bevételezés"))
+            continue
+
+        db.delete(order)
+        deleted += 1
+
+    db.commit()
+    return BulkDeleteOut(deleted=deleted, skipped=skipped)
 
 
 @router.delete("/{order_id}", status_code=204)

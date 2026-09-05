@@ -39,11 +39,6 @@
       <button class="bar__btn" id="logout-btn">Kilép</button>
     </div>
     <div class="form">
-      <div id="resume-box" hidden>
-        <h1>Folytatod?</h1>
-        <div id="resume-list"></div>
-        <p style="color:var(--steel-500);margin:18px 0 0">Vagy kezdj újat:</p>
-      </div>
       <h1 id="start-title">Melyik szállítótól?</h1>
       <div class="field">
         <label for="supplier">Szállító</label>
@@ -51,6 +46,11 @@
       </div>
       <div class="error" id="start-error"></div>
       <button class="btn btn--primary" id="start-btn">Kezdés</button>
+
+      <div id="resume-box" hidden>
+        <h2 class="resume__title">Félbehagyott bevételezések</h2>
+        <div id="resume-list"></div>
+      </div>
     </div>
   </section>
 

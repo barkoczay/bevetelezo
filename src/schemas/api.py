@@ -194,6 +194,27 @@ class ReceiptUpdateIn(BaseModel):
     note: str | None = None
 
 
+class BulkDeleteIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+class SkippedOut(BaseModel):
+    id: int
+    label: str
+    reason: str
+
+
+class BulkDeleteOut(BaseModel):
+    """Tömeges törlés eredménye.
+
+    A kihagyottakat felsoroljuk indoklással — a felhasználónak tudnia
+    kell, mi nem törlődött és miért.
+    """
+
+    deleted: int
+    skipped: list[SkippedOut] = []
+
+
 class ReceiptItemUpdateIn(BaseModel):
     qty: Decimal | None = Field(default=None, gt=0)
     net_unit_price: Decimal | None = None

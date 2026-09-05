@@ -156,7 +156,6 @@ async function renderResumable() {
   }
 
   box.hidden = open.length === 0;
-  $('start-title').textContent = open.length ? 'Új bevételezés' : 'Melyik szállítótól?';
 
   for (const receipt of open) {
     const btn = document.createElement('button');

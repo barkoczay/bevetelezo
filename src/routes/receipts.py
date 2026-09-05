@@ -18,6 +18,8 @@ from src.db.models import (
 )
 from src.db.session import get_db
 from src.schemas.api import (
+    BulkDeleteIn,
+    BulkDeleteOut,
     ReceiptCreateIn,
     ReceiptDetailOut,
     ReceiptItemOut,
@@ -26,6 +28,7 @@ from src.schemas.api import (
     ReceiptUpdateIn,
     ScanIn,
     ScanOut,
+    SkippedOut,
     UnknownScanOut,
 )
 from src.routes.core import _strip_separators, normalize_code
@@ -419,6 +422,43 @@ def reopen_receipt(
     db.commit()
     db.refresh(receipt)
     return _receipt_out(receipt, with_items=True)
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteOut, tags=["bevételezés"])
+def bulk_delete_receipts(
+    payload: BulkDeleteIn,
+    db: Session = Depends(get_db),
+    _: AppUser = Depends(current_user),
+):
+    """Több bevételezés törlése egyszerre.
+
+    Az exportáltakat kihagyjuk: azok már a Naturasoftban is szerepelnek.
+    A törölt tételek mennyisége visszakerül a megrendelések maradékába.
+    """
+    deleted = 0
+    skipped: list[SkippedOut] = []
+    touched: list[int] = []
+
+    for receipt_id in payload.ids:
+        receipt = db.get(Receipt, receipt_id)
+        label = f"#{receipt_id}"
+        if receipt is None:
+            skipped.append(SkippedOut(id=receipt_id, label=label, reason="nem található"))
+            continue
+
+        label = f"{receipt.supplier.name if receipt.supplier else '—'} ({receipt_id})"
+        if receipt.status == ReceiptStatus.exported:
+            skipped.append(SkippedOut(id=receipt_id, label=label, reason="már exportálva"))
+            continue
+
+        touched.extend(i.purchase_order_item_id for i in receipt.items)
+        db.delete(receipt)
+        deleted += 1
+
+    db.flush()
+    recalculate(db, touched)
+    db.commit()
+    return BulkDeleteOut(deleted=deleted, skipped=skipped)
 
 
 @router.delete("/{receipt_id}", status_code=204)

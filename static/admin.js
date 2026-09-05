@@ -22,6 +22,8 @@ const state = {
   pageSize: 50,
   receiptOffset: 0,
   orderOffset: 0,
+  selectedReceipts: new Set(),
+  selectedOrders: new Set(),
 };
 
 /* --- API ---------------------------------------------------------------- */
@@ -110,6 +112,73 @@ function table(headers, rows) {
   rows.forEach((r) => tbody.appendChild(r));
   t.appendChild(tbody);
   return t;
+}
+
+/* Kijelölés a listákban. A fejléc négyzete csak a betöltött sorokra
+   vonatkozik — nem jelöl ki olyat, amit a felhasználó nem lát. */
+function checkboxCell(set, id, prefix) {
+  const cell = element('td', 'check-col');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'check';
+  box.checked = set.has(id);
+  box.addEventListener('click', (e) => e.stopPropagation());
+  box.addEventListener('change', () => {
+    if (box.checked) set.add(id); else set.delete(id);
+    box.closest('tr').classList.toggle('is-selected', box.checked);
+    updateBulkBar(prefix, set);
+  });
+  cell.appendChild(box);
+  return cell;
+}
+
+function headerCheckbox(set, prefix) {
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'check';
+  box.addEventListener('change', () => {
+    document.querySelectorAll(`#${prefix}-list tbody .check`).forEach((cb) => {
+      if (cb.checked !== box.checked) cb.click();
+    });
+  });
+  return box;
+}
+
+function updateBulkBar(prefix, set) {
+  const bar = $(`${prefix}-bulk`);
+  bar.hidden = set.size === 0;
+  $(`${prefix}-selected`).textContent = `${set.size} kijelölve`;
+}
+
+function clearSelection(prefix, set) {
+  set.clear();
+  document.querySelectorAll(`#${prefix}-list .check`).forEach((cb) => { cb.checked = false; });
+  document.querySelectorAll(`#${prefix}-list tr`).forEach((tr) => tr.classList.remove('is-selected'));
+  updateBulkBar(prefix, set);
+}
+
+async function bulkDelete(prefix, set, path, question) {
+  if (!set.size) return;
+  if (!confirm(`${set.size} tétel: ${question}`)) return;
+
+  try {
+    const result = await api(path, { method: 'POST', body: { ids: [...set] } });
+    set.clear();
+    updateBulkBar(prefix, set);
+
+    let message = `${result.deleted} törölve.`;
+    if (result.skipped.length) {
+      const reasons = result.skipped
+        .map((s) => `${s.label}: ${s.reason}`)
+        .join('; ');
+      message += ` ${result.skipped.length} kihagyva — ${reasons}`;
+    }
+    note(`${prefix}-note`, message, result.skipped.length ? 'warn' : 'ok');
+    return true;
+  } catch (err) {
+    note(`${prefix}-note`, err.message);
+    return false;
+  }
 }
 
 const RECEIPT_STATUS = {
@@ -265,8 +334,12 @@ async function addSupplier() {
 /* --- bevételezések ------------------------------------------------------ */
 
 async function loadReceipts(append = false) {
-  note('receipt-note', '');
-  if (!append) state.receiptOffset = 0;
+  if (!append) {
+    note('receipt-note', '');
+    state.receiptOffset = 0;
+    state.selectedReceipts.clear();
+    updateBulkBar('receipt', state.selectedReceipts);
+  }
 
   const params = new URLSearchParams({
     limit: String(state.pageSize),
@@ -305,6 +378,8 @@ function renderReceipts(receipts, append = false) {
           : r.status === 'scanned' ? 'state-partial' : 'state-open'
     );
 
+    tr.appendChild(checkboxCell(state.selectedReceipts, r.id, 'receipt'));
+    if (state.selectedReceipts.has(r.id)) tr.classList.add('is-selected');
     tr.appendChild(element('td', null, dateTime(r.created_at)));
     tr.appendChild(element('td', null, r.supplier_name || '—'));
 
@@ -335,11 +410,13 @@ function renderReceipts(receipts, append = false) {
     return;
   }
 
-  host.appendChild(table(
-    ['Létrehozva', 'Szállító', 'Állapot',
+  const t = table(
+    [{ label: '', className: 'check-col' }, 'Létrehozva', 'Szállító', 'Állapot',
      { label: 'Tétel', className: 'num' }, 'Hivatkozás', 'Jelzések'],
     rows,
-  ));
+  );
+  t.querySelector('thead th').appendChild(headerCheckbox(state.selectedReceipts, 'receipt'));
+  host.appendChild(t);
 }
 
 async function openReceipt(id) {
@@ -595,8 +672,12 @@ async function exportReceipt() {
 /* --- megrendelések ------------------------------------------------------ */
 
 async function loadOrders(append = false) {
-  note('order-note', '');
-  if (!append) state.orderOffset = 0;
+  if (!append) {
+    note('order-note', '');
+    state.orderOffset = 0;
+    state.selectedOrders.clear();
+    updateBulkBar('order', state.selectedOrders);
+  }
 
   const params = new URLSearchParams({
     limit: String(state.pageSize),
@@ -630,6 +711,8 @@ function renderOrders(orders, append = false) {
     const tr = element('tr', 'clickable');
     tr.classList.add(`state-${o.status}`);
 
+    tr.appendChild(checkboxCell(state.selectedOrders, o.id, 'order'));
+    if (state.selectedOrders.has(o.id)) tr.classList.add('is-selected');
     tr.appendChild(element('td', null, o.order_number));
     tr.appendChild(element('td', null, date(o.order_date)));
     tr.appendChild(element('td', null, o.supplier_name || '—'));
@@ -669,11 +752,13 @@ function renderOrders(orders, append = false) {
     return;
   }
 
-  host.appendChild(table(
-    ['Rendelésszám', 'Dátum', 'Szállító', 'Állapot', 'Beérkezett',
-     { label: 'Kész tétel', className: 'num' }],
+  const t = table(
+    [{ label: '', className: 'check-col' }, 'Rendelésszám', 'Dátum', 'Szállító',
+     'Állapot', 'Beérkezett', { label: 'Kész tétel', className: 'num' }],
     rows,
-  ));
+  );
+  t.querySelector('thead th').appendChild(headerCheckbox(state.selectedOrders, 'order'));
+  host.appendChild(t);
 }
 
 async function openOrder(id) {
@@ -947,6 +1032,17 @@ $('receipt-refresh').addEventListener('click', () => loadReceipts());
 $('receipt-status').addEventListener('change', () => loadReceipts());
 $('receipt-supplier-filter').addEventListener('change', () => loadReceipts());
 $('receipt-more').addEventListener('click', () => loadReceipts(true));
+$('receipt-bulk-clear').addEventListener('click',
+  () => clearSelection('receipt', state.selectedReceipts));
+$('receipt-bulk-delete').addEventListener('click', async () => {
+  const done = await bulkDelete('receipt', state.selectedReceipts, '/receipts/bulk-delete',
+    'törlöd? A tételek mennyisége visszakerül a megrendelésekbe. Exportált bevételezés nem törölhető.');
+  if (done) {
+    const message = $('receipt-note').textContent;
+    await loadReceipts();
+    note('receipt-note', message, 'ok');
+  }
+});
 $('receipt-back').addEventListener('click', () => { showPanel('receipts'); loadReceipts(); });
 $('rd-save-ref').addEventListener('click', saveReference);
 $('rd-export').addEventListener('click', exportReceipt);
@@ -957,6 +1053,17 @@ $('order-refresh').addEventListener('click', () => loadOrders());
 $('order-status').addEventListener('change', () => loadOrders());
 $('order-supplier-filter').addEventListener('change', () => loadOrders());
 $('order-more').addEventListener('click', () => loadOrders(true));
+$('order-bulk-clear').addEventListener('click',
+  () => clearSelection('order', state.selectedOrders));
+$('order-bulk-delete').addEventListener('click', async () => {
+  const done = await bulkDelete('order', state.selectedOrders, '/orders/bulk-delete',
+    'törlöd? Amelyikhez már tartozik bevételezés, azt kihagyjuk.');
+  if (done) {
+    const message = $('order-note').textContent;
+    await loadOrders();
+    note('order-note', message, 'ok');
+  }
+});
 $('order-search').addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => loadOrders(), 300);

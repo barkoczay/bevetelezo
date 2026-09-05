@@ -140,6 +140,31 @@ h2 { font-size: 18px; font-weight: 600; margin: 26px 0 10px; }
 .upload .note { margin: 12px 0 0; }
 .upload .card { margin-top: 12px; }
 
+/* A kijelölés sávja csak akkor jelenik meg, ha van mit törölni. */
+.bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  margin-bottom: 10px;
+  border: 1px solid var(--steel-800);
+  border-radius: 6px;
+  background: var(--white);
+}
+
+.bulkbar[hidden] { display: none; }
+.bulkbar span { margin-right: auto; font-weight: 500; }
+
+.check {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--steel-950);
+}
+
+th.check-col, td.check-col { width: 34px; padding-right: 0; }
+tr.is-selected td { background: var(--steel-100); }
+
 .more { display: flex; justify-content: center; padding: 14px 0; }
 
 .card {
