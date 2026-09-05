@@ -176,6 +176,14 @@ function setFeedback(stateName, name, qty, hint, unit = 'db') {
   }
 }
 
+/* A felismert szöveg kiírása. Rövid, de mindig ott van, hogy látszódjon,
+   miből dolgozott a rendszer. */
+function showHeard(text) {
+  const el = $('fb-heard');
+  if (!el) return;
+  el.textContent = text ? `„${text}”` : '';
+}
+
 function formatQty(value) {
   const n = Number(value);
   return Number.isInteger(n) ? String(n) : String(n).replace('.', ',');
@@ -697,6 +705,9 @@ const voice = {
       return;
     }
 
+    // Mindig látszódjon, mit hallott — enélkül a hibát nem lehet megfogni.
+    showHeard(alternatives[0]);
+
     // a javító lap nyitva van -> nem nyúlunk bele
     if (!$('edit-sheet').hidden) return;
 
@@ -725,6 +736,22 @@ const voice = {
       if (state.lastProductCode) removeProduct(state.lastProductCode);
       else say('Nincs mit visszavonni');
       return;
+    }
+
+    // Kényszerítő parancsok, ha a felismerés félreértené a szándékot:
+    //   'keresd ...' / 'termék ...'  -> mindig keresés
+    //   'darab ...'                  -> mindig mennyiség
+    const forcedSearch = first.match(/^(keresd|keres|keresés|termék|termek)\s+(.+)$/);
+    if (forcedSearch) {
+      state.step = 'product';
+      voiceSearch(forcedSearch[2]);
+      return;
+    }
+
+    const forcedQty = first.match(/^(darab|mennyiség|mennyiseg)\s+(.+)$/);
+    if (forcedQty) {
+      const value = parseHungarianNumber(forcedQty[2]);
+      if (value !== null && value > 0) { setQuantityForLast(value); return; }
     }
 
     if (state.step === 'quantity') {

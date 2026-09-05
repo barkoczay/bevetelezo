@@ -165,6 +165,18 @@ button, input, select {
   overflow-wrap: anywhere;
 }
 
+/* Amit hallott: halvány, de mindig látható — ebből derül ki, ha a
+   felismerés mást értett, mint amit mondtak. */
+.feedback__heard {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: var(--steel-500);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.feedback__heard:empty { display: none; }
+
 .feedback[data-state='stop'] .feedback__name { color: var(--stop); }
 .feedback[data-state='warn'] .feedback__name { color: var(--warn); }
 
