@@ -59,6 +59,12 @@ async function api(path, { method = 'GET', body, form } = {}) {
 function show(name) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.remove('is-active'));
   $('screen-' + name).classList.add('is-active');
+
+  // A képernyő csak a munka alatt maradjon ébren — a keresés is ide
+  // tartozik, mert onnan lép vissza a szkennelésre.
+  if (name === 'scan' || name === 'search') keepScreenAwake();
+  else releaseScreenLock();
+
   if (name === 'scan') focusScanner();
   if (name === 'search') setTimeout(() => $('search-input').focus(), 50);
 }
@@ -417,6 +423,45 @@ function handleScanKey(event) {
     if (code.length >= 8) sendScan(code, 1);
   }, 120);
 }
+
+/* --- képernyő ébren tartása ---------------------------------------------
+
+   Ha a képernyő elalszik, a rendszer a mikrofont is felfüggeszti, és a
+   hangvezérlés megszakad. A böngésző nem tudja külön ébren tartani a
+   mikrofont, ezért a képernyőt tartjuk ébren, amíg tart a bevételezés.
+   ------------------------------------------------------------------------ */
+
+let wakeLock = null;
+
+async function keepScreenAwake() {
+  if (!('wakeLock' in navigator) || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    // A rendszer elveheti (pl. háttérbe kerül az app) — ilyenkor
+    // a visszatéréskor újra kérjük.
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (_) {
+    // Nem támogatott vagy megtagadva: az app ettől még működik,
+    // csak a képernyő elalhat.
+    wakeLock = null;
+  }
+}
+
+async function releaseScreenLock() {
+  if (!wakeLock) return;
+  try { await wakeLock.release(); } catch (_) { /* már elengedve */ }
+  wakeLock = null;
+}
+
+// Ha az app visszatér az előtérbe, a zárolás és a mikrofon is újraindul.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if ($('screen-scan').classList.contains('is-active')) {
+    keepScreenAwake();
+    if (voice.enabled) voice.launch();
+    focusScanner();
+  }
+});
 
 /* --- beszélt visszajelzés ------------------------------------------------
 
