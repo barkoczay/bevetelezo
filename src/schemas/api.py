@@ -44,6 +44,8 @@ class ProductOut(ORMModel):
     name: str
     unit: str
     inactive: bool
+    in_naturasoft: bool = True
+    source: str = "naturasoft"
 
 
 class ProductImportOut(BaseModel):
@@ -148,6 +150,9 @@ class ReceiptItemOut(ORMModel):
     vat_name: str | None
     note: str | None
     order_number: str | None = None
+    # Admin figyelmeztetés: a termék nincs a Naturasoftban, az import
+    # elutasítaná ezt a sort. A raktáros ezt nem látja.
+    missing_in_naturasoft: bool = False
 
 
 class UnknownScanOut(ORMModel):
@@ -172,6 +177,8 @@ class ReceiptOut(ORMModel):
     note: str | None
     item_count: int = 0
     unknown_count: int = 0
+    # Hány tétel hiányzik a Naturasoftból (admin figyelmeztetés)
+    missing_in_naturasoft_count: int = 0
 
 
 class ReceiptDetailOut(ReceiptOut):

@@ -43,6 +43,8 @@ CREATE TABLE supplier (
 -- ean: TEXT, mert lehet vezető nullás, és nem minden terméknél
 -- van (a mintában a termékek jelentős részénél hiányzott).
 -- ------------------------------------------------------------
+CREATE TYPE product_source AS ENUM ('naturasoft', 'unas', 'order');
+
 CREATE TABLE product (
     id                  BIGSERIAL PRIMARY KEY,
     naturasoft_id       BIGINT      NOT NULL UNIQUE,     -- "Sorszám" / "Termék sorszám"
@@ -56,6 +58,12 @@ CREATE TABLE product (
     weight_kg           NUMERIC(12,3),
     product_group       TEXT,                            -- "Termékcsoportok"
     inactive            BOOLEAN     NOT NULL DEFAULT FALSE, -- "Törölt (inaktív)"
+    -- Igaz, ha a termék biztosan létezik a Naturasoftban: vagy szerepelt az
+    -- induló Naturasoft importban, vagy volt már szállítói megrendelésen.
+    -- Ha hamis, a bevételezés importja elutasítaná a sort -> admin figyelmeztetés.
+    -- A raktáros ebből semmit nem lát.
+    in_naturasoft       BOOLEAN     NOT NULL DEFAULT FALSE,
+    source              product_source NOT NULL DEFAULT 'naturasoft',
     imported_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -244,3 +252,10 @@ CREATE TABLE product_import_log (
 
 -- 2026-09-05: hivatkozási szám a bevételezéshez
 -- ALTER TABLE receipt ADD COLUMN reference_number TEXT;
+
+-- 2026-09-05: Unas terméktörzs támogatás
+-- CREATE TYPE product_source AS ENUM ('naturasoft', 'unas', 'order');
+-- ALTER TABLE product ADD COLUMN in_naturasoft BOOLEAN NOT NULL DEFAULT FALSE;
+-- ALTER TABLE product ADD COLUMN source product_source NOT NULL DEFAULT 'naturasoft';
+-- A már meglévő termékek a Naturasoftból jöttek:
+-- UPDATE product SET in_naturasoft = TRUE;

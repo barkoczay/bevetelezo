@@ -50,6 +50,9 @@ def _item_out(item: ReceiptItem) -> ReceiptItemOut:
         unit=item.unit,
         vat_name=item.vat_name,
         note=item.note,
+        missing_in_naturasoft=(
+            item.product is not None and not item.product.in_naturasoft
+        ),
         order_number=(
             item.po_item.order.order_number
             if item.po_item is not None and item.po_item.order is not None
@@ -74,6 +77,11 @@ def _receipt_out(receipt: Receipt, with_items: bool = False):
         "note": receipt.note,
         "item_count": len(receipt.items),
         "unknown_count": len(receipt.unknown_scans),
+        "missing_in_naturasoft_count": sum(
+            1
+            for i in receipt.items
+            if i.product is not None and not i.product.in_naturasoft
+        ),
     }
     if not with_items:
         return ReceiptOut(**data)

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.db.models import Product, ProductImportLog
+from src.db.models import Product, ProductImportLog, ProductSource
 from src.services.excel_utils import (
     as_bool,
     as_code,
@@ -106,6 +106,9 @@ def import_products(
             "weight_kg": as_decimal(cell(row, col_map, H_SULY)),
             "product_group": as_text(cell(row, col_map, H_CSOPORT)),
             "inactive": as_bool(cell(row, col_map, H_TOROLT)),
+            # Ez a Naturasoft saját exportja, tehát a termék biztosan létezik ott.
+            "in_naturasoft": True,
+            "source": ProductSource.naturasoft,
         }
 
         existing = db.scalar(

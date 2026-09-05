@@ -50,6 +50,14 @@ class ReceiptItemSource(str, enum.Enum):
     outside_order = "outside_order"
 
 
+class ProductSource(str, enum.Enum):
+    """Honnan került be a termék a törzsbe."""
+
+    naturasoft = "naturasoft"   # induló Naturasoft terméktörzs import
+    unas = "unas"               # napi Unas szinkron
+    order = "order"             # szállítói megrendelés feltöltéséből
+
+
 # ---------------------------------------------------------------- felhasználó
 
 
@@ -99,6 +107,15 @@ class Product(Base):
     weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
     product_group: Mapped[str | None] = mapped_column(Text)
     inactive: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Igaz, ha a termék biztosan létezik a Naturasoftban: vagy szerepelt az
+    # induló Naturasoft importban, vagy volt már szállítói megrendelésen
+    # (rendelésre csak Naturasoftban létező termék kerülhet).
+    # Ha hamis, a bevételezés importja el fogja utasítani a sort — ezért az
+    # admin figyelmeztetést kap. A raktáros ebből semmit nem lát.
+    in_naturasoft: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[ProductSource] = mapped_column(
+        Enum(ProductSource, name="product_source"), default=ProductSource.naturasoft
+    )
     imported_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

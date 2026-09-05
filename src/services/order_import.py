@@ -17,7 +17,13 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.db.models import Product, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus
+from src.db.models import (
+    Product,
+    ProductSource,
+    PurchaseOrder,
+    PurchaseOrderItem,
+    PurchaseOrderStatus,
+)
 from src.services.excel_utils import (
     as_code,
     as_decimal,
@@ -180,15 +186,30 @@ def import_order(
             select(Product).where(Product.naturasoft_id == item.naturasoft_id)
         )
         if product is None:
-            parsed.warnings.append(
-                f"A termék nincs a törzsben (sorszám {item.naturasoft_id}): "
-                f"{item.name} — frissítsd a terméktörzset"
+            # A termék még nincs a törzsben. Rendelésre viszont csak olyan
+            # termék kerülhet, ami a Naturasoftban létezik — ezért felvesszük
+            # a rendelés adataiból, in_naturasoft=True jelöléssel.
+            product = Product(
+                naturasoft_id=item.naturasoft_id,
+                ean=item.ean,
+                sku=item.sku,
+                name=item.name,
+                unit=item.unit,
+                vat_rate=item.vat_rate,
+                in_naturasoft=True,
+                source=ProductSource.order,
             )
+            db.add(product)
+            db.flush()
+        elif not product.in_naturasoft:
+            # Eddig csak az Unasból ismertük. Most kiderült, hogy a
+            # Naturasoftban is létezik, tehát a figyelmeztetés megszűnhet.
+            product.in_naturasoft = True
 
         db.add(
             PurchaseOrderItem(
                 purchase_order_id=order.id,
-                product_id=product.id if product else None,
+                product_id=product.id,
                 naturasoft_id=item.naturasoft_id,
                 sku_snapshot=item.sku,
                 ean_snapshot=item.ean,
