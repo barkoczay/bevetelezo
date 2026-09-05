@@ -154,9 +154,16 @@ def list_orders(
     status: str | None = None,
     supplier_id: int | None = None,
     q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
     db: Session = Depends(get_db),
     _: AppUser = Depends(current_user),
 ):
+    """Megrendelések, legfrissebb elöl.
+
+    Lapozható: sok rendelésnél az egész lista betöltése lassú lenne, és
+    a felhasználót úgyis csak a legutóbbiak érdeklik.
+    """
     stmt = select(PurchaseOrder).order_by(
         PurchaseOrder.order_date.desc(), PurchaseOrder.order_number.desc()
     )
@@ -166,6 +173,8 @@ def list_orders(
         stmt = stmt.where(PurchaseOrder.supplier_id == supplier_id)
     if q:
         stmt = stmt.where(PurchaseOrder.order_number.ilike(f"%{q.strip()}%"))
+
+    stmt = stmt.limit(max(1, min(limit, 200))).offset(max(0, offset))
     return [_to_order_out(o, db) for o in db.scalars(stmt)]
 
 

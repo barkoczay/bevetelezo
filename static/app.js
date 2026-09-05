@@ -119,6 +119,7 @@ function logout() {
 async function openStart() {
   $('start-error').textContent = '';
   try {
+    await renderResumable();
     const suppliers = await api('/suppliers');
     const select = $('supplier');
     select.innerHTML = '';
@@ -133,6 +134,72 @@ async function openStart() {
       select.appendChild(opt);
     }
     show('start');
+  } catch (err) {
+    $('start-error').textContent = err.message;
+  }
+}
+
+/* Félbehagyott bevételezések. Enélkül minden megszakadt munka (lemerült
+   telefon, véletlen kilépés) új bevételezést kényszerítene, a régi pedig
+   ott maradna befejezetlenül. */
+async function renderResumable() {
+  const box = $('resume-box');
+  const list = $('resume-list');
+  list.innerHTML = '';
+
+  let open = [];
+  try {
+    open = await api('/receipts?status=in_progress');
+  } catch (_) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = open.length === 0;
+  $('start-title').textContent = open.length ? 'Új bevételezés' : 'Melyik szállítótól?';
+
+  for (const receipt of open) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'resume';
+    btn.innerHTML = '<span class="resume__name"></span><span class="resume__meta"></span>';
+    btn.querySelector('.resume__name').textContent = receipt.supplier_name || 'ismeretlen szállító';
+    btn.querySelector('.resume__meta').textContent = `${receipt.item_count} tétel`;
+    btn.addEventListener('click', () => resumeReceipt(receipt.id));
+    list.appendChild(btn);
+  }
+}
+
+async function resumeReceipt(id) {
+  $('start-error').textContent = '';
+  try {
+    const receipt = await api(`/receipts/${id}`);
+    state.receiptId = receipt.id;
+    state.supplierName = receipt.supplier_name || '';
+    state.lastProductCode = null;
+    state.step = 'product';
+
+    // A korábban beolvasott tételek visszatöltése, termékenként összevonva
+    // (a FIFO több sorra bonthatta ugyanazt a terméket).
+    const byProduct = new Map();
+    for (const item of receipt.items) {
+      const code = item.ean_snapshot || item.sku_snapshot;
+      const existing = byProduct.get(code);
+      if (existing) existing.qty += Number(item.qty);
+      else byProduct.set(code, {
+        productId: code,
+        name: item.name_snapshot,
+        unit: item.unit,
+        qty: Number(item.qty),
+      });
+    }
+    state.items = [...byProduct.values()];
+
+    $('scan-supplier').textContent = state.supplierName;
+    renderItems();
+    setFeedback('idle', 'Folytathatod', null,
+      `${state.items.length} tétel már be van olvasva.`);
+    show('scan');
   } catch (err) {
     $('start-error').textContent = err.message;
   }

@@ -18,6 +18,10 @@ const state = {
   receipt: null,
   order: null,
   pendingUpload: null,
+  // Lapozás: egyszerre ennyit töltünk, a többit kérésre.
+  pageSize: 50,
+  receiptOffset: 0,
+  orderOffset: 0,
 };
 
 /* --- API ---------------------------------------------------------------- */
@@ -188,6 +192,19 @@ async function loadSuppliers() {
 }
 
 function fillSupplierSelects() {
+  for (const id of ['receipt-supplier-filter', 'order-supplier-filter']) {
+    const select = $(id);
+    const current = select.value;
+    select.innerHTML = '<option value="">Mind</option>';
+    for (const s of state.suppliers) {
+      const option = document.createElement('option');
+      option.value = s.id;
+      option.textContent = s.name;
+      select.appendChild(option);
+    }
+    if (current) select.value = current;
+  }
+
   for (const id of ['order-supplier', 'od-supplier']) {
     const select = $(id);
     const current = select.value;
@@ -247,21 +264,35 @@ async function addSupplier() {
 
 /* --- bevételezések ------------------------------------------------------ */
 
-async function loadReceipts() {
+async function loadReceipts(append = false) {
   note('receipt-note', '');
-  const status = $('receipt-status').value;
+  if (!append) state.receiptOffset = 0;
+
+  const params = new URLSearchParams({
+    limit: String(state.pageSize),
+    offset: String(state.receiptOffset),
+  });
+  if ($('receipt-status').value) params.set('status', $('receipt-status').value);
+  if ($('receipt-supplier-filter').value) {
+    params.set('supplier_id', $('receipt-supplier-filter').value);
+  }
+
   try {
-    const receipts = await api(`/receipts${status ? `?status=${status}` : ''}`);
-    renderReceipts(receipts);
+    const receipts = await api(`/receipts?${params}`);
+    renderReceipts(receipts, append);
+    state.receiptOffset += receipts.length;
+    // Ha teli oldalt kaptunk, valószínűleg van még.
+    $('receipt-more').hidden = receipts.length < state.pageSize;
   } catch (err) { note('receipt-note', err.message); }
 }
 
-function renderReceipts(receipts) {
+function renderReceipts(receipts, append = false) {
   const host = $('receipt-list');
-  host.innerHTML = '';
+  const existing = append ? host.querySelector('tbody') : null;
+  if (!append) host.innerHTML = '';
 
   if (!receipts.length) {
-    host.appendChild(element('p', 'empty', 'Nincs megjeleníthető bevételezés.'));
+    if (!append) host.appendChild(element('p', 'empty', 'Nincs megjeleníthető bevételezés.'));
     return;
   }
 
@@ -298,6 +329,11 @@ function renderReceipts(receipts) {
     tr.addEventListener('click', () => openReceipt(r.id));
     return tr;
   });
+
+  if (existing) {
+    rows.forEach((r) => existing.appendChild(r));
+    return;
+  }
 
   host.appendChild(table(
     ['Létrehozva', 'Szállító', 'Állapot',
@@ -340,6 +376,11 @@ function renderReceiptDetail() {
   $('rd-save-ref').disabled = !editable;
   $('rd-export').disabled = !editable;
   $('rd-export').textContent = editable ? 'Excel letöltése' : 'Már exportálva';
+
+  // Visszaadás csak akkor, ha a raktáros már befejezte — folyamatban
+  // lévőt nem kell visszaadni.
+  $('rd-reopen').hidden = r.status !== 'scanned';
+  $('rd-delete').hidden = !editable;
 
   const missingPrice = r.items.filter(
     (i) => i.net_unit_price === null || i.net_unit_price === undefined).length;
@@ -500,6 +541,28 @@ async function saveReference() {
   } catch (err) { note('rd-note', err.message); }
 }
 
+async function reopenReceipt() {
+  if (!confirm(
+    'Visszaadod a raktárosnak? A bevételezés újra megnyílik, és folytatható a beolvasás.'
+  )) return;
+  try {
+    await api(`/receipts/${state.receipt.id}/reopen`, { method: 'POST' });
+    await openReceipt(state.receipt.id);
+    note('rd-note', 'Visszaadva. A raktáros folytathatja a beolvasást.', 'ok');
+  } catch (err) { note('rd-note', err.message); }
+}
+
+async function deleteReceipt() {
+  if (!confirm(
+    'Törlöd ezt a bevételezést?\n\nA tételei visszakerülnek a megrendelések maradékába. A művelet nem vonható vissza.'
+  )) return;
+  try {
+    await api(`/receipts/${state.receipt.id}`, { method: 'DELETE' });
+    showPanel('receipts');
+    await loadReceipts();
+  } catch (err) { note('rd-note', err.message); }
+}
+
 async function exportReceipt() {
   if (!confirm(
     'A letöltés után ez a bevételezés lezárul, és nem lesz módosítható.\n\n' +
@@ -531,23 +594,35 @@ async function exportReceipt() {
 
 /* --- megrendelések ------------------------------------------------------ */
 
-async function loadOrders() {
+async function loadOrders(append = false) {
   note('order-note', '');
-  const params = new URLSearchParams();
+  if (!append) state.orderOffset = 0;
+
+  const params = new URLSearchParams({
+    limit: String(state.pageSize),
+    offset: String(state.orderOffset),
+  });
   if ($('order-status').value) params.set('status', $('order-status').value);
   if ($('order-search').value.trim()) params.set('q', $('order-search').value.trim());
+  if ($('order-supplier-filter').value) {
+    params.set('supplier_id', $('order-supplier-filter').value);
+  }
+
   try {
-    const orders = await api(`/orders${params.toString() ? '?' + params : ''}`);
-    renderOrders(orders);
+    const orders = await api(`/orders?${params}`);
+    renderOrders(orders, append);
+    state.orderOffset += orders.length;
+    $('order-more').hidden = orders.length < state.pageSize;
   } catch (err) { note('order-note', err.message); }
 }
 
-function renderOrders(orders) {
+function renderOrders(orders, append = false) {
   const host = $('order-list');
-  host.innerHTML = '';
+  const existing = append ? host.querySelector('tbody') : null;
+  if (!append) host.innerHTML = '';
 
   if (!orders.length) {
-    host.appendChild(element('p', 'empty', 'Nincs megjeleníthető megrendelés.'));
+    if (!append) host.appendChild(element('p', 'empty', 'Nincs megjeleníthető megrendelés.'));
     return;
   }
 
@@ -588,6 +663,11 @@ function renderOrders(orders) {
     tr.addEventListener('click', () => openOrder(o.id));
     return tr;
   });
+
+  if (existing) {
+    rows.forEach((r) => existing.appendChild(r));
+    return;
+  }
 
   host.appendChild(table(
     ['Rendelésszám', 'Dátum', 'Szállító', 'Állapot', 'Beérkezett',
@@ -863,17 +943,23 @@ document.querySelectorAll('.tab').forEach((tabButton) => {
   });
 });
 
-$('receipt-refresh').addEventListener('click', loadReceipts);
-$('receipt-status').addEventListener('change', loadReceipts);
+$('receipt-refresh').addEventListener('click', () => loadReceipts());
+$('receipt-status').addEventListener('change', () => loadReceipts());
+$('receipt-supplier-filter').addEventListener('change', () => loadReceipts());
+$('receipt-more').addEventListener('click', () => loadReceipts(true));
 $('receipt-back').addEventListener('click', () => { showPanel('receipts'); loadReceipts(); });
 $('rd-save-ref').addEventListener('click', saveReference);
 $('rd-export').addEventListener('click', exportReceipt);
+$('rd-reopen').addEventListener('click', reopenReceipt);
+$('rd-delete').addEventListener('click', deleteReceipt);
 
-$('order-refresh').addEventListener('click', loadOrders);
-$('order-status').addEventListener('change', loadOrders);
+$('order-refresh').addEventListener('click', () => loadOrders());
+$('order-status').addEventListener('change', () => loadOrders());
+$('order-supplier-filter').addEventListener('change', () => loadOrders());
+$('order-more').addEventListener('click', () => loadOrders(true));
 $('order-search').addEventListener('input', () => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(loadOrders, 300);
+  searchTimer = setTimeout(() => loadOrders(), 300);
 });
 $('order-back').addEventListener('click', () => { showPanel('orders'); loadOrders(); });
 $('order-file').addEventListener('change', (e) => {

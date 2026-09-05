@@ -126,6 +126,22 @@ h2 { font-size: 18px; font-weight: 600; margin: 26px 0 10px; }
 
 /* --- táblázat ------------------------------------------------------ */
 
+/* A feltöltés a lista fölött van: sok megrendelésnél a lista alja
+   elérhetetlen messzeségbe kerülne. */
+.upload {
+  background: var(--white);
+  border: 1px solid var(--steel-200);
+  border-radius: 7px;
+  padding: 14px 16px;
+  margin-bottom: 26px;
+}
+
+.upload .toolbar { margin-bottom: 0; }
+.upload .note { margin: 12px 0 0; }
+.upload .card { margin-top: 12px; }
+
+.more { display: flex; justify-content: center; padding: 14px 0; }
+
 .card {
   background: var(--white);
   border: 1px solid var(--steel-200);

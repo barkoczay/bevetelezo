@@ -308,14 +308,19 @@ def finish_scanning(
 def list_receipts(
     status: str | None = None,
     supplier_id: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
     db: Session = Depends(get_db),
     _: AppUser = Depends(current_user),
 ):
-    stmt = select(Receipt).order_by(Receipt.created_at.desc())
+    """Bevételezések, legfrissebb elöl. Lapozható."""
+    stmt = select(Receipt).order_by(Receipt.created_at.desc(), Receipt.id.desc())
     if status:
         stmt = stmt.where(Receipt.status == ReceiptStatus(status))
     if supplier_id:
         stmt = stmt.where(Receipt.supplier_id == supplier_id)
+
+    stmt = stmt.limit(max(1, min(limit, 200))).offset(max(0, offset))
     return [_receipt_out(r) for r in db.scalars(stmt)]
 
 
@@ -393,6 +398,54 @@ def delete_item(
     db.delete(item)
     db.flush()
     recalculate(db, [po_item_id])
+    db.commit()
+
+
+@router.post("/{receipt_id}/reopen", response_model=ReceiptDetailOut)
+def reopen_receipt(
+    receipt_id: int,
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(current_user),
+):
+    """Beolvasott bevételezés visszanyitása, hogy folytatható legyen.
+
+    Exportált bevételezést nem lehet visszanyitni: az már bekerült a
+    Naturasoftba, ott kell javítani.
+    """
+    receipt = _get_editable(db, receipt_id)
+    receipt.status = ReceiptStatus.in_progress
+    receipt.scanned_at = None
+    receipt.locked_by = user.id
+    db.commit()
+    db.refresh(receipt)
+    return _receipt_out(receipt, with_items=True)
+
+
+@router.delete("/{receipt_id}", status_code=204)
+def delete_receipt(
+    receipt_id: int,
+    db: Session = Depends(get_db),
+    _: AppUser = Depends(current_user),
+):
+    """Bevételezés törlése.
+
+    A tételei mennyisége visszakerül a megrendelések maradékába.
+    Exportált bevételezés nem törölhető: az már a Naturasoftban is
+    szerepel, a törlés eltüntetné a nyomát.
+    """
+    receipt = db.get(Receipt, receipt_id)
+    if receipt is None:
+        raise HTTPException(404, "Nincs ilyen bevételezés.")
+    if receipt.status == ReceiptStatus.exported:
+        raise HTTPException(
+            409,
+            "Exportált bevételezés nem törölhető. Ha hibás, a Naturasoftban kell javítani.",
+        )
+
+    touched = [i.purchase_order_item_id for i in receipt.items]
+    db.delete(receipt)
+    db.flush()
+    recalculate(db, touched)
     db.commit()
 
 

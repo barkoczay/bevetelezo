@@ -39,7 +39,12 @@
       <button class="bar__btn" id="logout-btn">Kilép</button>
     </div>
     <div class="form">
-      <h1>Melyik szállítótól?</h1>
+      <div id="resume-box" hidden>
+        <h1>Folytatod?</h1>
+        <div id="resume-list"></div>
+        <p style="color:var(--steel-500);margin:18px 0 0">Vagy kezdj újat:</p>
+      </div>
+      <h1 id="start-title">Melyik szállítótól?</h1>
       <div class="field">
         <label for="supplier">Szállító</label>
         <select id="supplier"></select>

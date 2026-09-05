@@ -310,6 +310,29 @@ button, input, select {
 
 .error:empty { display: none; }
 
+/* --- félbehagyott bevételezés folytatása -------------------------- */
+
+.resume {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border: 1px solid var(--steel-800);
+  border-radius: 6px;
+  background: var(--white);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.resume:active { background: var(--steel-100); }
+.resume__name { flex: 1; min-width: 0; font-weight: 500; }
+.resume__meta { color: var(--steel-500); font-size: 15px; }
+
 /* --- keresés ------------------------------------------------------ */
 
 .search { padding: 12px 16px; background: var(--white); border-bottom: 1px solid var(--steel-200); }

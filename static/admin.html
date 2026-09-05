@@ -52,11 +52,14 @@
             <option value="scanned" selected>Beolvasva</option>
             <option value="exported">Exportálva</option>
           </select></div>
+        <div class="field"><label for="receipt-supplier-filter">Szállító</label>
+          <select id="receipt-supplier-filter"><option value="">Mind</option></select></div>
         <button class="btn toolbar--right" id="receipt-refresh">Frissítés</button>
       </div>
 
       <div class="note" id="receipt-note"></div>
       <div class="card"><div id="receipt-list"></div></div>
+      <div class="more"><button class="btn" id="receipt-more" hidden>Továbbiak betöltése</button></div>
     </section>
 
     <!-- ------------------------------------ egy bevételezés részletei -->
@@ -77,7 +80,9 @@
           <input id="rd-reference" placeholder="pl. 9686, 9701">
         </div>
         <button class="btn" id="rd-save-ref">Mentés</button>
-        <button class="btn btn--primary toolbar--right" id="rd-export">Excel letöltése</button>
+        <button class="btn toolbar--right" id="rd-reopen">Visszaadás a raktárosnak</button>
+        <button class="btn btn--danger" id="rd-delete">Törlés</button>
+        <button class="btn btn--primary" id="rd-export">Excel letöltése</button>
       </div>
 
       <div class="card"><div id="rd-items"></div></div>
@@ -92,6 +97,23 @@
       <p class="lede">A feltöltött szállítói megrendelések és a bevételezés
         előrehaladása.</p>
 
+      <div class="upload">
+        <div class="toolbar">
+          <div class="field"><label for="order-file">Naturasoft tétellista (.xls)</label>
+            <input type="file" id="order-file" accept=".xls,.xlsx"></div>
+          <div class="field"><label for="order-number">Rendelésszám</label>
+            <input id="order-number" placeholder="a fájlnévből"></div>
+          <div class="field"><label for="order-date">Dátum</label>
+            <input type="date" id="order-date"></div>
+          <div class="field"><label for="order-supplier">Szállító</label>
+            <select id="order-supplier"></select></div>
+          <button class="btn btn--primary" id="order-upload">Feltöltés</button>
+        </div>
+        <div class="note" id="upload-note"></div>
+        <div class="card" id="preview-card" hidden><div id="order-preview"></div></div>
+      </div>
+
+      <h2>Feltöltött megrendelések</h2>
       <div class="toolbar">
         <div class="field"><label for="order-status">Állapot</label>
           <select id="order-status">
@@ -102,26 +124,15 @@
           </select></div>
         <div class="field"><label for="order-search">Rendelésszám</label>
           <input id="order-search" placeholder="pl. 9686"></div>
+        <div class="field"><label for="order-supplier-filter">Szállító</label>
+          <select id="order-supplier-filter"><option value="">Mind</option></select></div>
         <button class="btn toolbar--right" id="order-refresh">Frissítés</button>
       </div>
 
       <div class="note" id="order-note"></div>
       <div class="card"><div id="order-list"></div></div>
+      <div class="more"><button class="btn" id="order-more" hidden>Továbbiak betöltése</button></div>
 
-      <h2>Új megrendelés feltöltése</h2>
-      <div class="toolbar">
-        <div class="field"><label for="order-file">Naturasoft tétellista (.xls)</label>
-          <input type="file" id="order-file" accept=".xls,.xlsx"></div>
-        <div class="field"><label for="order-number">Rendelésszám</label>
-          <input id="order-number" placeholder="a fájlnévből"></div>
-        <div class="field"><label for="order-date">Dátum</label>
-          <input type="date" id="order-date"></div>
-        <div class="field"><label for="order-supplier">Szállító</label>
-          <select id="order-supplier"></select></div>
-        <button class="btn btn--primary" id="order-upload">Feltöltés</button>
-      </div>
-      <div class="note" id="upload-note"></div>
-      <div class="card" id="preview-card" hidden><div id="order-preview"></div></div>
     </section>
 
     <!-- --------------------------------- egy megrendelés részletei -->
