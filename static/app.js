@@ -19,6 +19,10 @@ const state = {
   items: [],          // { productId, name, unit, qty }
   lastProductCode: null,
   lastProductId: null,
+  /* A termék darabszáma a MOSTANI beolvasás ELŐTT. A bemondott mennyiség
+     ehhez adódik, nem a teljes darabszámot állítja be — így ha ugyanazt a
+     vonalkódot kétszer olvassák be, a második mennyiség hozzáadódik. */
+  quantityBase: 0,
   /* A hangvezérlés két lépésben halad:
        'product'  — terméket keresünk (a keresőszó tartalmazhat számot)
        'quantity' — megvan a termék, a darabszámot várjuk
@@ -219,6 +223,7 @@ async function startReceipt() {
     state.items = [];
     state.lastProductCode = null;
     state.lastProductId = null;
+    state.quantityBase = 0;
     state.step = 'product';
 
     $('scan-supplier').textContent = state.supplierName;
@@ -330,6 +335,9 @@ async function sendScan(code, qty = 1) {
 
     state.lastProductCode = code;
     state.step = 'quantity';          // megvan a termék, jöhet a darabszám
+    // A most beolvasott mennyiség előtti állapot: a bemondott darabszám
+    // ezt fogja kiegészíteni.
+    state.quantityBase = Number(res.total_qty) - Number(qty);
     setFeedback('ok', res.product_name, res.total_qty,
       'Mondd a darabszámot, vagy olvasd a következőt.', res.unit);
     beep('ok');
@@ -365,15 +373,19 @@ async function setQuantity(code, target) {
   }
 }
 
-/* Mennyiség bemondása a legutóbb beolvasott termékhez. */
-async function setQuantityForLast(target) {
+/* Mennyiség bemondása a legutóbb beolvasott termékhez.
+
+   A bemondott szám a MOSTANI beolvasásra vonatkozik. Ha ugyanaz a termék
+   már szerepelt a bevételezésben, a korábbi darabszám megmarad, és a
+   bemondott mennyiség hozzáadódik. */
+async function setQuantityForLast(spoken) {
   if (!state.lastProductCode) {
     setFeedback('warn', 'Előbb válassz terméket', null,
       'A darabszám mindig az utoljára rögzített tételre vonatkozik.');
     say('Előbb válassz terméket');
     return;
   }
-  await setQuantity(state.lastProductCode, target);
+  await setQuantity(state.lastProductCode, state.quantityBase + spoken);
 }
 
 /* --- tétel javítása és visszavonása ------------------------------------- */
@@ -411,6 +423,9 @@ async function saveEdit() {
   if (target === 0) {
     await removeProduct(code);
   } else {
+    // A javító lapon a TELJES darabszám látszik, ezért itt abszolút érték.
+    state.quantityBase = 0;
+    state.lastProductCode = code;
     await setQuantity(code, target);
   }
 }
@@ -421,7 +436,10 @@ async function removeProduct(code) {
       method: 'DELETE',
     });
     state.items = state.items.filter((i) => i.productId !== code);
-    if (state.lastProductCode === code) state.lastProductCode = null;
+    if (state.lastProductCode === code) {
+      state.lastProductCode = null;
+      state.quantityBase = 0;
+    }
     state.step = 'product';
     renderItems();
     setFeedback('idle', 'Tétel visszavonva', null, res.product_name);
