@@ -277,3 +277,14 @@ CREATE TABLE product_import_log (
 --                   WHERE i.purchase_order_id = o.id
 --                     AND i.received_qty > 0) THEN 'partial'
 --     ELSE 'open' END;
+
+-- 2026-09-05: a termék párosítása CIKKSZÁM alapján történik (nem sorszám)
+-- A Naturasoft bevételezés importja is cikkszámon azonosít.
+--
+-- Az egyediség a sorszámról a cikkszámra kerül:
+-- ALTER TABLE product DROP CONSTRAINT product_naturasoft_id_key;
+-- ALTER TABLE product ALTER COLUMN naturasoft_id DROP NOT NULL;
+-- CREATE INDEX IF NOT EXISTS idx_product_naturasoft ON product (naturasoft_id);
+--
+-- Duplikált cikkszámok keresése a váltás előtt:
+-- SELECT sku, count(*) FROM product GROUP BY sku HAVING count(*) > 1;

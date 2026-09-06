@@ -149,7 +149,10 @@ def upload_order(
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    return _to_order_out(order, db, with_items=True)
+
+    result = _to_order_out(order, db, with_items=True)
+    result.import_warnings = getattr(order, "import_warnings", [])
+    return result
 
 
 @router.get("", response_model=list[OrderOut])

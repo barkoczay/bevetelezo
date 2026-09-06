@@ -182,9 +182,10 @@ def import_order(
     db.flush()
 
     for item in parsed.items:
-        product = db.scalar(
-            select(Product).where(Product.naturasoft_id == item.naturasoft_id)
-        )
+        # A párosítás CIKKSZÁM alapján történik: a Naturasoft bevételezés
+        # importja is azon azonosít, tehát az a termék valódi kulcsa.
+        product = db.scalar(select(Product).where(Product.sku == item.sku))
+
         if product is None:
             # A termék még nincs a törzsben. Rendelésre viszont csak olyan
             # termék kerülhet, ami a Naturasoftban létezik — ezért felvesszük
@@ -201,10 +202,25 @@ def import_order(
             )
             db.add(product)
             db.flush()
-        elif not product.in_naturasoft:
-            # Eddig csak az Unasból ismertük. Most kiderült, hogy a
-            # Naturasoftban is létezik, tehát a figyelmeztetés megszűnhet.
-            product.in_naturasoft = True
+            parsed.warnings.append(
+                f"Új termék felvéve a törzsbe: {item.sku} — {item.name}"
+            )
+        else:
+            if not product.in_naturasoft:
+                # Eddig csak az Unasból ismertük. Most kiderült, hogy a
+                # Naturasoftban is létezik, tehát a figyelmeztetés megszűnhet.
+                product.in_naturasoft = True
+
+            if product.ean is None and item.ean:
+                # A terméktörzsben nincs vonalkód, a rendelésben viszont van —
+                # enélkül a terméket nem lehetne beolvasni, csak keresni.
+                product.ean = item.ean
+                parsed.warnings.append(
+                    f"Vonalkód pótolva a rendelésből: {product.sku} → {item.ean}"
+                )
+
+            if product.naturasoft_id is None and item.naturasoft_id:
+                product.naturasoft_id = item.naturasoft_id
 
         db.add(
             PurchaseOrderItem(
@@ -224,4 +240,8 @@ def import_order(
 
     db.commit()
     db.refresh(order)
+    # A figyelmeztetéseket a végpont továbbadja a felületnek: enélkül a
+    # sorszám-ütközés csendben maradna, és a raktáros csak a beolvasásnál
+    # szembesülne vele.
+    order.import_warnings = parsed.warnings
     return order

@@ -95,9 +95,12 @@ class Product(Base):
     __tablename__ = "product"
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
-    # A Naturasoft "Sorszám" / "Termék sorszám" oszlopa. Ez a stabil kulcs.
-    naturasoft_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    # A Naturasoft "Sorszám" / "Termék sorszám" oszlopa. Csak tájékoztató:
+    # a párosítás CIKKSZÁM alapján történik, mert a Naturasoft bevételezés
+    # importja is azon azonosít.
+    naturasoft_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     ean: Mapped[str | None] = mapped_column(Text, index=True)
+    # A termék azonosítója. Ez a párosítás kulcsa mindenhol.
     sku: Mapped[str] = mapped_column(Text, index=True)
     name: Mapped[str] = mapped_column(Text)
     manufacturer: Mapped[str | None] = mapped_column(Text)
@@ -152,6 +155,9 @@ class PurchaseOrder(Base):
     items: Mapped[list[PurchaseOrderItem]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
+
+    # Csak a feltöltés válaszához, nem tárolt mező.
+    import_warnings: list[str] = []
 
 
 class PurchaseOrderItem(Base):

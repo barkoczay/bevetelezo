@@ -95,6 +95,8 @@ class OrderOut(ORMModel):
 
 class OrderDetailOut(OrderOut):
     items: list[OrderItemOut] = []
+    # A feltöltés figyelmeztetései (sorszám-ütközés, pótolt vonalkód).
+    import_warnings: list[str] = []
 
 
 class OrderPreviewOut(BaseModel):

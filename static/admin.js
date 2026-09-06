@@ -938,7 +938,16 @@ async function uploadOrder() {
 
   try {
     const order = await api('/orders/upload', { method: 'POST', form });
-    note('upload-note', `${order.order_number} feltöltve, ${order.item_count} tétel.`, 'ok');
+
+    const warnings = order.import_warnings || [];
+    if (warnings.length) {
+      note('upload-note',
+        `${order.order_number} feltöltve, ${order.item_count} tétel. ` +
+        `${warnings.length} figyelmeztetés: ${warnings.join(' | ')}`,
+        'warn');
+    } else {
+      note('upload-note', `${order.order_number} feltöltve, ${order.item_count} tétel.`, 'ok');
+    }
     $('order-file').value = '';
     $('order-number').value = '';
     $('preview-card').hidden = true;

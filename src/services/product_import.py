@@ -57,7 +57,7 @@ def import_products(
 
     result = ProductImportResult()
     ean_counter: Counter[str] = Counter()
-    seen_naturasoft_ids: set[int] = set()
+    seen_skus: set[str] = set()
 
     for _, row in df.iloc[header_row + 1 :].iterrows():
         naturasoft_id_raw = cell(row, col_map, H_SORSZAM)
@@ -70,35 +70,33 @@ def import_products(
 
         result.rows_total += 1
 
-        naturasoft_id = as_decimal(naturasoft_id_raw)
-        if naturasoft_id is None:
-            result.skipped += 1
-            result.warnings.append(f"Hiányzó sorszám: {name or '(névtelen sor)'}")
-            continue
-        naturasoft_id = int(naturasoft_id)
-
+        # A cikkszám a kulcs: enélkül a termék nem bevételezhető, mert a
+        # Naturasoft importja is cikkszám alapján azonosít.
         if not sku:
             result.skipped += 1
-            result.warnings.append(f"Hiányzó cikkszám (sorszám {naturasoft_id}): {name}")
+            result.warnings.append(f"Hiányzó cikkszám: {name or '(névtelen sor)'}")
             continue
 
-        if naturasoft_id in seen_naturasoft_ids:
+        if sku in seen_skus:
             result.skipped += 1
-            result.warnings.append(f"Duplikált sorszám a fájlban: {naturasoft_id}")
+            result.warnings.append(f"Duplikált cikkszám a fájlban: {sku}")
             continue
-        seen_naturasoft_ids.add(naturasoft_id)
+        seen_skus.add(sku)
+
+        naturasoft_id = as_decimal(naturasoft_id_raw)
+        naturasoft_id = int(naturasoft_id) if naturasoft_id is not None else None
 
         ean = as_code(cell(row, col_map, H_TERMEKKOD))
         if ean:
             ean_counter[ean] += 1
         else:
             result.warnings.append(
-                f"Nincs vonalkód (sorszám {naturasoft_id}): {name} — csak kézi keresés"
+                f"Nincs vonalkód ({sku}): {name} — csak kézi keresés"
             )
 
         values = {
+            "naturasoft_id": naturasoft_id,
             "ean": ean,
-            "sku": sku,
             "name": name or sku,
             "manufacturer": as_text(cell(row, col_map, H_GYARTO)),
             "unit": as_text(cell(row, col_map, H_MEE)) or "db",
@@ -111,14 +109,17 @@ def import_products(
             "source": ProductSource.naturasoft,
         }
 
-        existing = db.scalar(
-            select(Product).where(Product.naturasoft_id == naturasoft_id)
-        )
+        existing = db.scalar(select(Product).where(Product.sku == sku))
         if existing is None:
-            db.add(Product(naturasoft_id=naturasoft_id, **values))
+            db.add(Product(sku=sku, **values))
             result.created += 1
         else:
             for key, value in values.items():
+                # A meglévő vonalkódot nem írjuk felül üressel: lehet, hogy
+                # egy megrendelésből pótoltuk, és a Naturasoftban még
+                # mindig nincs kitöltve.
+                if key == "ean" and value is None and existing.ean:
+                    continue
                 setattr(existing, key, value)
             result.updated += 1
 
