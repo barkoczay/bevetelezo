@@ -344,6 +344,13 @@ button, input, select {
 .resume__name { flex: 1; min-width: 0; font-weight: 500; }
 .resume__meta { color: var(--steel-500); font-size: 15px; }
 
+.version {
+  margin-top: 22px;
+  text-align: center;
+  color: var(--steel-500);
+  font-size: 14px;
+}
+
 /* --- keresés ------------------------------------------------------ */
 
 .search { padding: 12px 16px; background: var(--white); border-bottom: 1px solid var(--steel-200); }

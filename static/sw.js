@@ -2,7 +2,7 @@
    PWA gyorsan induljon. Az API hívások MINDIG a hálózatról jönnek —
    a bevételezés élő adat, elavult válasz káros lenne. */
 
-const CACHE = 'bevetelezo-v1';
+const CACHE = 'bevetelezo-2026-09-05.3';
 const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json'];
 
 self.addEventListener('install', (event) => {

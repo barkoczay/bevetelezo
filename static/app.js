@@ -9,6 +9,7 @@
 'use strict';
 
 const API = '/api';
+const APP_VERSION = '2026-09-05.3';
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -1121,8 +1122,26 @@ window.addEventListener('focus', () => {
 
 /* --- indulás ------------------------------------------------------------ */
 
+/* A verzió a bejelentkező képernyőn látszik: ebből derül ki, hogy a
+   frissítés tényleg megérkezett-e a telefonra. */
+const versionEl = document.getElementById('app-version');
+if (versionEl) versionEl.textContent = APP_VERSION;
+
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => { /* offline mód nélkül is megy */ });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    // Ha új verzió érhető el, azonnal átvesszük — enélkül a raktáros
+    // napokig a régi kódot futtatná.
+    reg.addEventListener('updatefound', () => {
+      const worker = reg.installing;
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          window.location.reload();
+        }
+      });
+    });
+    reg.update();
+  }).catch(() => { /* offline mód nélkül is megy */ });
 }
 
 if (state.token) {
